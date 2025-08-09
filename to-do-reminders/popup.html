@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>To-Do Reminders</title>
+    <link rel="stylesheet" href="popup.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>To-Do Reminders</h1>
+            <div class="header-buttons">
+                <button id="calendarBtn" class="btn btn-secondary">
+                    <i class="fas fa-calendar"></i>
+                </button>
+                <button id="addBtn" class="btn btn-primary">
+                    <i class="fas fa-plus"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Auto Check Settings -->
+        <div class="auto-check-settings">
+            <label class="checkbox-container">
+                <input type="checkbox" id="autoCheckEnabled" class="auto-check-toggle">
+                <span class="checkmark"></span>
+                <span class="checkbox-label">Periyodik kontrol (30 saniye)</span>
+            </label>
+            <div class="auto-check-info">
+                <small>📍 Ana kontrol tarayıcı açıldığında yapılır</small>
+            </div>
+        </div>
+
+        <!-- Color Filters -->
+        <div id="colorFilters" class="color-filters">
+            <button class="filter-option all active" data-color="all">
+                <span class="all-icon"></span>
+            </button>
+            <button class="filter-option red" data-color="red"></button>
+            <button class="filter-option orange" data-color="orange"></button>
+            <button class="filter-option yellow" data-color="yellow"></button>
+            <button class="filter-option green" data-color="green"></button>
+            <button class="filter-option blue" data-color="blue"></button>
+            <button class="filter-option cyan" data-color="cyan"></button>
+            <button class="filter-option indigo" data-color="indigo"></button>
+            <button class="filter-option lime" data-color="lime"></button>
+        </div>
+
+        <!-- Todo Form -->
+        <div id="todoForm" class="todo-form hidden">
+            <div class="form-group">
+                <input type="text" id="todoText" placeholder="Görev girin..." class="form-input">
+            </div>
+            <div class="form-group">
+                <label class="form-label">📅 Başlangıç Tarihi (İsteğe Bağlı)</label>
+                <input type="datetime-local" id="todoDate" class="form-input">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">📅 Bitiş Tarihi (İsteğe Bağlı)</label>
+                <input type="datetime-local" id="todoEndDate" class="form-input">
+                <small class="date-help">Boş bırakılırsa tek tarihli görev olur</small>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Renk Seçin:</label>
+                <div class="color-picker">
+                    <input type="radio" id="color-red" name="todoColor" value="red" class="color-radio">
+                    <label for="color-red" class="color-option red"></label>
+                    
+                    <input type="radio" id="color-orange" name="todoColor" value="orange" class="color-radio">
+                    <label for="color-orange" class="color-option orange"></label>
+                    
+                    <input type="radio" id="color-yellow" name="todoColor" value="yellow" class="color-radio">
+                    <label for="color-yellow" class="color-option yellow"></label>
+                    
+                    <input type="radio" id="color-green" name="todoColor" value="green" class="color-radio" checked>
+                    <label for="color-green" class="color-option green"></label>
+                    
+                    <input type="radio" id="color-blue" name="todoColor" value="blue" class="color-radio">
+                    <label for="color-blue" class="color-option blue"></label>
+                    
+                    <input type="radio" id="color-cyan" name="todoColor" value="cyan" class="color-radio">
+                    <label for="color-cyan" class="color-option cyan"></label>
+                    
+                    <input type="radio" id="color-indigo" name="todoColor" value="indigo" class="color-radio">
+                    <label for="color-indigo" class="color-option indigo"></label>
+                    
+                    <input type="radio" id="color-lime" name="todoColor" value="lime" class="color-radio">
+                    <label for="color-lime" class="color-option lime"></label>
+                </div>
+            </div>
+            <div class="form-buttons">
+                <button id="saveTodo" class="btn btn-success">Kaydet</button>
+                <button id="cancelTodo" class="btn btn-gray">İptal</button>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <button id="todoTab" class="tab active">
+                Görevler
+            </button>
+            <button id="calendarTab" class="tab">
+                Takvim
+            </button>
+        </div>
+
+        <!-- Todo View -->
+        <div id="todoView" class="content">
+            <div id="todoList" class="todo-list"></div>
+            <div id="emptyState" class="empty-state">
+                <i class="fas fa-clipboard-list"></i>
+                <p>Henüz görev eklenmemiş</p>
+            </div>
+        </div>
+
+        <!-- Calendar View -->
+        <div id="calendarView" class="content hidden">
+            <div class="calendar">
+                <div class="calendar-header">
+                    <button id="prevMonth" class="calendar-nav">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <h3 id="currentMonth" class="calendar-title"></h3>
+                    <button id="nextMonth" class="calendar-nav">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+                <div class="calendar-grid">
+                    <div class="calendar-day-header">Pt</div>
+                    <div class="calendar-day-header">Sa</div>
+                    <div class="calendar-day-header">Ça</div>
+                    <div class="calendar-day-header">Pe</div>
+                    <div class="calendar-day-header">Cu</div>
+                    <div class="calendar-day-header">Ct</div>
+                    <div class="calendar-day-header">Pa</div>
+                </div>
+                <div id="calendarGrid" class="calendar-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html> 

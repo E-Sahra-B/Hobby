@@ -1,0 +1,19 @@
+GEREKLI ICON DOSYALARI:
+
+Extension'ın çalışması için "icons" klasörü oluşturup aşağıdaki dosyaları ekleyin:
+
+1. icons/icon-16.png (16x16 piksel)
+2. icons/icon-48.png (48x48 piksel)  
+3. icons/icon-128.png (128x128 piksel)
+
+İcon Tasarım Önerileri:
+- Basit ve net bir görev listesi/takvim ikonu
+- Mavi ve beyaz renk tonları
+- Modern ve minimal tasarım
+- PNG formatında şeffaf arka plan
+
+Hızlı Çözüm:
+Bu dosyaları https://favicon.io/ gibi sitelerden üretebilir veya
+herhangi bir free icon site'den uygun ikonları indirebilirsiniz.
+
+Arama terimleri: "checklist", "todo", "task", "calendar", "reminder" 
