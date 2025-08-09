@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Takvim Hatırlatıcı</title>
+    <style>
+        :root {
+            --bg: #0b1020;
+            --card: #121a2b;
+            --muted: #d0d7e2;
+            --primary: #4f46e5;
+            --border: #1e2740;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
+                "Apple Color Emoji", "Segoe UI Emoji";
+            background: var(--bg);
+            color: #fff;
+        }
+
+        .container {
+            max-width: 740px;
+            margin: 0 auto;
+            padding: 16px;
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+        }
+
+        label {
+            display: block;
+            font-size: 14px;
+            color: var(--muted);
+            margin-bottom: 6px;
+        }
+
+        input[type="text"],
+        textarea,
+        input[type="number"] {
+            width: 100%;
+            background: #0f1629;
+            border: 1px solid var(--border);
+            color: #fff;
+            border-radius: 10px;
+            padding: 12px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .checkbox {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        button {
+            background: var(--primary);
+            border: none;
+            color: #fff;
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        button.secondary {
+            background: #26324a;
+        }
+
+        button.danger {
+            background: #b91c1c;
+        }
+
+        .list {
+            margin-top: 16px;
+            display: grid;
+            gap: 10px;
+        }
+
+        .item {
+            background: #0f1629;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            justify-content: space-between;
+        }
+
+        .item-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 0;
+        }
+
+        .color-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 999px;
+            border: 1px solid #fff4;
+            flex: none;
+        }
+
+        .item-title {
+            font-weight: 600;
+        }
+
+        .item-sub {
+            color: var(--muted);
+            font-size: 12px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .hint {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        @media (min-width: 640px) {
+            .grid-2 {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 12px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="grid-2">
+                <div>
+                    <label for="title">Hatırlatma Başlığı</label>
+                    <input id="title" type="text" placeholder="Örn: Toplantı" />
+                </div>
+                <div>
+                    <label for="color">Renk</label>
+                    <input id="color" type="color" value="#3b82f6" />
+                </div>
+            </div>
+ 
+         <div style="margin-top: 12px">
+             <label for="description">Açıklama (DESCRIPTION)</label>
+             <input id="description" type="text" placeholder="Örn: Proje kickoff toplantısı" />
+         </div>
+
+            <div class="controls" style="margin-top: 12px">
+                <div class="checkbox">
+                    <input id="hasAlert" type="checkbox" checked />
+                    <label for="hasAlert" style="margin: 0">Uyarı Gönder</label>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px">
+                    <label for="alertMinutes" style="margin: 0">Dakika önce:</label>
+                    <input id="alertMinutes" type="number" min="1" max="1440" value="10" style="width: 90px" />
+                </div>
+            </div>
+
+            <div style="margin-top: 12px">
+                <label for="dates">Tarihler (her satırda bir tarih)</label>
+                <textarea id="dates" rows="6"
+                    placeholder="Örn:\n28.08.2025 14:30\n28.08.2025\n28 ağustos 2025 09:00\n28 ağustos 09:00"></textarea>
+                <div class="hint">- Desteklenen: dd.mm.yyyy [hh:mm] ve 'dd ayadı [yyyy] [hh:mm]'. Yıl yoksa mevcut yıl alınır. Saat yoksa tüm gün, saat varsa 1 saatlik etkinlik.</div>
+            </div>
+
+            <div style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap">
+                <button id="generate">Oluştur</button>
+                <button id="clearAll" class="secondary">Listeyi Temizle</button>
+            </div>
+        </div>
+
+        <div style="margin-top: 16px" class="card">
+            <h3 style="margin-top: 0">Oluşturulan .ics Dosyaları</h3>
+            <div id="list" class="list"></div>
+            <div class="hint">Her öğeyi indirebilir veya silebilirsiniz.</div>
+        </div>
+    </div>
+
+    <script>
+        // Helpers
+        function pad(n) { return n.toString().padStart(2, "0"); }
+        function toUTCString(dt) {
+            return (
+                dt.getUTCFullYear().toString() +
+                pad(dt.getUTCMonth() + 1) +
+                pad(dt.getUTCDate()) +
+                "T" +
+                pad(dt.getUTCHours()) +
+                pad(dt.getUTCMinutes()) +
+                pad(dt.getUTCSeconds()) +
+                "Z"
+            );
+        }
+        function formatDateLabel(info) {
+            if (info.allDay) {
+                return info.startLocal.toLocaleDateString();
+            } else {
+                const d = info.startLocal;
+                const end = info.endLocal;
+                return (
+                    d.toLocaleDateString() +
+                    " " +
+                    pad(d.getHours()) +
+                    ":" +
+                    pad(d.getMinutes()) +
+                    " - " +
+                    pad(end.getHours()) +
+                    ":" +
+                    pad(end.getMinutes())
+                );
+            }
+        }
+        function normalizeTr(text) {
+            return text
+                .toLowerCase()
+                .replace(/ç/g, 'c')
+                .replace(/ğ/g, 'g')
+                .replace(/ı/g, 'i')
+                .replace(/ö/g, 'o')
+                .replace(/ş/g, 's')
+                .replace(/ü/g, 'u');
+        }
+        const trMonthToIndex = {
+            ocak: 0,
+            subat: 1,
+            mart: 2,
+            nisan: 3,
+            mayis: 4,
+            haziran: 5,
+            temmuz: 6,
+            agustos: 7,
+            eylul: 8,
+            ekim: 9,
+            kasim: 10,
+            aralik: 11,
+        };
+        function escapeICSText(text) {
+            const s = String(text || "");
+            return s
+                .replace(/\\/g, "\\\\")
+                .replace(/\r?\n/g, "\\n")
+                .replace(/,/g, "\\,")
+                .replace(/;/g, "\\;");
+        }
+        function slugify(text) {
+            return (
+                normalizeTr(text)
+                    .toLowerCase()
+                    .trim()
+                    .replace(/[^a-z0-9\-_.]+/g, "-")
+                    .replace(/\-+/g, "-")
+                    .replace(/^\-+|\-+$/g, "") || "hatirlatma"
+            );
+        }
+        function parseLineToEvent(line) {
+            const raw = line.trim();
+            if (!raw) return null;
+
+            let hasTime = /\d{1,2}:\d{2}/.test(raw);
+            let m;
+            // YYYY-MM-DD[ HH:MM]
+            if (
+                (m = raw.match(
+                    /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?$/
+                ))
+            ) {
+                const [_, y, mo, da, hh, mm] = m;
+                const date = new Date(
+                    Number(y),
+                    Number(mo) - 1,
+                    Number(da),
+                    hh ? Number(hh) : 0,
+                    mm ? Number(mm) : 0
+                );
+                hasTime = !!hh;
+                return { startLocal: date, allDay: !hasTime };
+            }
+            // DD.MM.YYYY or DD/MM/YYYY [HH:MM]
+            if (
+                (m = raw.match(
+                    /^(\d{1,2})[./](\d{1,2})[./](\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/
+                ))
+            ) {
+                const [_, da, mo, y, hh, mm] = m;
+                const date = new Date(
+                    Number(y),
+                    Number(mo) - 1,
+                    Number(da),
+                    hh ? Number(hh) : 0,
+                    mm ? Number(mm) : 0
+                );
+                hasTime = !!hh;
+                return { startLocal: date, allDay: !hasTime };
+            }
+
+            // DD <ayadı> [YYYY] [HH:MM]
+            const normalized = normalizeTr(raw).replace(/\s+/g, ' ').trim();
+            if (
+                (m = normalized.match(
+                    /^(\d{1,2})\s+([a-zçğıöşü]+)(?:\s+(\d{4}))?(?:\s+(\d{1,2}):(\d{2}))?$/
+                ))
+            ) {
+                const [, dayStr, monthStrRaw, yearStr, hh, mm] = m;
+                const monthStr = normalizeTr(monthStrRaw);
+                const monthIndex = trMonthToIndex[monthStr];
+                if (monthIndex === undefined) {
+                    return { error: "Ay adı anlaşılamadı: " + raw };
+                }
+                const now = new Date();
+                const yearNum = yearStr ? Number(yearStr) : now.getFullYear();
+                const date = new Date(
+                    yearNum,
+                    monthIndex,
+                    Number(dayStr),
+                    hh ? Number(hh) : 0,
+                    mm ? Number(mm) : 0
+                );
+                hasTime = !!hh;
+                return { startLocal: date, allDay: !hasTime };
+            }
+
+            const auto = new Date(raw);
+            if (!isNaN(auto.getTime())) {
+                return { startLocal: auto, allDay: !hasTime };
+            }
+            return { error: "Tarih anlaşılamadı: " + raw };
+        }
+
+        function buildICS({ uid, title, description, color, hasAlert, alertMinutes, startLocal, allDay }) {
+            const lines = [];
+            lines.push("BEGIN:VCALENDAR");
+            lines.push("VERSION:2.0");
+            lines.push("PRODID:-//TakvimUretici//TR 1.0//TR");
+            lines.push("CALSCALE:GREGORIAN");
+            // Calendar-level metadata (helps Apple Calendar)
+            lines.push("X-WR-CALNAME:" + escapeICSText(title || "Hatırlatma"));
+            if (color) {
+                lines.push("X-APPLE-CALENDAR-COLOR:" + color.toUpperCase());
+            }
+
+            const now = new Date();
+            const dtstamp = toUTCString(now);
+
+            let dtStartStr, dtEndStr, endLocal;
+            if (allDay) {
+                const startDate = new Date(
+                    startLocal.getFullYear(),
+                    startLocal.getMonth(),
+                    startLocal.getDate()
+                );
+                const nextDay = new Date(startDate.getTime() + 24 * 60 * 60 * 1000);
+                const fmt = (d) =>
+                    d.getFullYear().toString() + pad(d.getMonth() + 1) + pad(d.getDate());
+                dtStartStr = "DTSTART;VALUE=DATE:" + fmt(startDate);
+                dtEndStr = "DTEND;VALUE=DATE:" + fmt(nextDay);
+                endLocal = nextDay;
+            } else {
+                const start = startLocal;
+                const end = new Date(start.getTime() + 60 * 60 * 1000);
+                endLocal = end;
+                dtStartStr = "DTSTART:" + toUTCString(start);
+                dtEndStr = "DTEND:" + toUTCString(end);
+            }
+
+            lines.push("BEGIN:VEVENT");
+            lines.push("UID:" + uid);
+            lines.push("DTSTAMP:" + dtstamp);
+            lines.push(dtStartStr);
+            lines.push(dtEndStr);
+            lines.push("SUMMARY:" + (title || "Hatırlatma"));
+            lines.push("DESCRIPTION:" + escapeICSText(description || ""));
+            if (color) {
+                // Not a standard color property; use CATEGORIES so Outlook/Thunderbird
+                // can optionally map an existing category (with same name) to a color
+                lines.push("CATEGORIES:Color " + color.toUpperCase());
+            }
+            if (hasAlert) {
+                const mins = Math.max(1, Math.min(1440, Number(alertMinutes) || 10));
+                lines.push("BEGIN:VALARM");
+                lines.push("ACTION:DISPLAY");
+                lines.push("DESCRIPTION:" + escapeICSText(description || title || "Hatırlatma"));
+                lines.push("TRIGGER:-PT" + mins + "M");
+                lines.push("END:VALARM");
+            }
+            lines.push("END:VEVENT");
+            lines.push("END:VCALENDAR");
+
+            return lines.join("\r\n");
+        }
+
+        function createListItem({ filename, label, color, icsContent }) {
+            const list = document.getElementById("list");
+            const item = document.createElement("div");
+            item.className = "item";
+
+            const left = document.createElement("div");
+            left.className = "item-left";
+            const dot = document.createElement("div");
+            dot.className = "color-dot";
+            dot.style.background = color || "#3b82f6";
+            const textWrap = document.createElement("div");
+            const titleEl = document.createElement("div");
+            titleEl.className = "item-title";
+            titleEl.textContent = filename;
+            const sub = document.createElement("div");
+            sub.className = "item-sub";
+            sub.textContent = label;
+
+            textWrap.appendChild(titleEl);
+            textWrap.appendChild(sub);
+            left.appendChild(dot);
+            left.appendChild(textWrap);
+
+            const actions = document.createElement("div");
+            actions.className = "actions";
+            const downloadBtn = document.createElement("button");
+            downloadBtn.textContent = "İndir";
+            const deleteBtn = document.createElement("button");
+            deleteBtn.textContent = "Sil";
+            deleteBtn.className = "danger";
+
+            actions.appendChild(downloadBtn);
+            actions.appendChild(deleteBtn);
+
+            item.appendChild(left);
+            item.appendChild(actions);
+
+            const blob = new Blob([icsContent], { type: "text/calendar;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            downloadBtn.addEventListener("click", () => {
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            });
+
+            deleteBtn.addEventListener("click", () => {
+                URL.revokeObjectURL(url);
+                item.remove();
+            });
+
+            list.appendChild(item);
+        }
+
+        document.getElementById("hasAlert").addEventListener("change", (e) => {
+            document.getElementById("alertMinutes").disabled = !e.target.checked;
+        });
+
+        document.getElementById("clearAll").addEventListener("click", () => {
+            document.getElementById("list").innerHTML = "";
+        });
+
+        document.getElementById("generate").addEventListener("click", () => {
+            const title = document.getElementById("title").value.trim() || "Hatırlatma";
+            const color = document.getElementById("color").value || "#3b82f6";
+            const hasAlert = document.getElementById("hasAlert").checked;
+            const alertMinutes = Number(document.getElementById("alertMinutes").value || 10);
+            const lines = document.getElementById("dates").value.split("\n");
+            const description = document.getElementById("description").value.trim();
+
+            const baseSlug = slugify(title);
+
+            let count = 0;
+            for (const line of lines) {
+                const parsed = parseLineToEvent(line);
+                if (!parsed) continue;
+                if (parsed.error) {
+                    alert(parsed.error);
+                    continue;
+                }
+
+                const label = formatDateLabel({
+                    startLocal: parsed.startLocal,
+                    endLocal: parsed.allDay
+                        ? new Date(parsed.startLocal.getTime() + 24 * 60 * 60 * 1000)
+                        : new Date(parsed.startLocal.getTime() + 60 * 60 * 1000),
+                    allDay: parsed.allDay,
+                });
+                const uid = baseSlug + "-" + Date.now() + "-" + ++count + "@local";
+                const ics = buildICS({
+                    uid,
+                    title,
+                    description,
+                    color,
+                    hasAlert,
+                    alertMinutes,
+                    startLocal: parsed.startLocal,
+                    allDay: parsed.allDay,
+                });
+                const datePart = parsed.allDay
+                    ? parsed.startLocal.toISOString().slice(0, 10)
+                    : parsed.startLocal.toISOString().replace(/[:]/g, "").slice(0, 15);
+                const filename = `${baseSlug}-${datePart}.ics`;
+
+                createListItem({ filename, label, color, icsContent: ics });
+            }
+        });
+    </script>
+</body>
+
+</html>
