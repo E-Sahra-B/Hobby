@@ -1,9 +1,13 @@
 # To-Do Reminders Browser Extension
 
 Modern ve kullanıcı dostu bir görev yönetimi browser extension'ı.
-![Uygulama ana ekran görüntüsü](assets/screenshot1.png)
-![Uygulama ekleme ekran görüntüsü](assets/screenshot2.png)
-![Uygulama uyarı ekran görüntüsü](assets/screenshot3.png)
+
+<p align="center">
+  <img src="assets/screenshot1.png" alt="Uygulama ana ekran görüntüsü" width="260" />
+  <img src="assets/screenshot2.png" alt="Uygulama ekleme ekran görüntüsü" width="260" />
+  <img src="assets/screenshot3.png" alt="Uygulama uyarı ekran görüntüsü" width="260" />
+  
+</p>
 
 ## Özellikler
 
