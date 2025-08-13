@@ -1,0 +1,44 @@
+/* General Styles */
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #000010;
+    color: white;
+    overflow: hidden; /* Prevents scrollbars from appearing */
+}
+
+/* Canvas */
+.webgl {
+    position: fixed;
+    top: 0;
+    left: 0;
+    outline: none;
+    z-index: -1; /* Place canvas behind other content */
+}
+
+/* Content Overlay */
+.content {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    pointer-events: none; /* Allows mouse events to pass through to the canvas */
+}
+
+.content h1 {
+    font-size: 4rem;
+    margin: 0;
+    letter-spacing: 0.5rem;
+    text-transform: uppercase;
+    font-weight: 900;
+    text-shadow: 0 0 10px #00b3ff, 0 0 20px #00b3ff, 0 0 40px #00b3ff;
+}
+
+.content p {
+    font-size: 1.2rem;
+    margin-top: 1rem;
+    letter-spacing: 0.1rem;
+    font-weight: 300;
+}
