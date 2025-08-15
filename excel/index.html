@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mini Excel</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="toolbar">
+        <div class="selected-cell-container">
+            <label for="selected-cell">Seçili Hücre:</label>
+            <input type="text" id="selected-cell" disabled>
+        </div>
+        <div class="color-container">
+            <input type="color" id="color-picker" value="#ffff00">
+            <button id="color-button">Hücreyi Renklendir</button>
+        </div>
+    </div>
+    <div id="grid-container"></div>
+    <script src="script.js"></script>
+</body>
+</html>
