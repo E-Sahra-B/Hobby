@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mini Excel</title>
+    <style>
+        body {
+            font-family: "Segoe UI", Arial, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background-color: #f9fafb;
+            color: #333;
+        }
+
+        /* Toolbar */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            background: linear-gradient(135deg, #f8f8f8, #e9ecef);
+            border-bottom: 1px solid #ccc;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            flex-wrap: wrap;
+        }
+
+        .selected-cell-container,
+        .color-container,
+        .button-container {
+            display: flex;
+            align-items: center;
+            margin-right: 20px;
+            margin-bottom: 5px;
+        }
+
+        .toolbar label {
+            margin-right: 6px;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .toolbar input[type="text"] {
+            width: 80px;
+            text-align: center;
+            font-weight: bold;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            padding: 4px;
+            background-color: #fff;
+        }
+
+        .toolbar input[type="color"] {
+            border: none;
+            background: none;
+            width: 40px;
+            height: 30px;
+            cursor: pointer;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .toolbar button {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            background-color: #1a73e8;
+            color: #fff;
+            cursor: pointer;
+            font-size: 13px;
+            margin-right: 5px;
+            transition: background-color 0.2s ease, transform 0.1s ease;
+        }
+
+        .toolbar button:hover {
+            background-color: #1669c1;
+            transform: translateY(-1px);
+        }
+
+        /* Grid container */
+        #grid-container {
+            flex-grow: 1;
+            overflow: auto;
+            border-top: 1px solid #ddd;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: auto;
+            min-width: fit-content;
+        }
+
+        /* Hücreler */
+        .cell {
+            padding: 8px;
+            border: 1px solid #ddd;
+            min-height: 25px;
+            box-sizing: border-box;
+            text-align: left;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            cursor: cell;
+            background-color: #fff;
+            transition: background-color 0.15s ease;
+        }
+
+        .cell:hover {
+            background-color: #f5f9ff;
+        }
+
+        /* Başlıklar */
+        .header {
+            background-color: #f1f3f5;
+            font-weight: bold;
+            text-align: center;
+            position: sticky;
+            top: 0;
+            left: 0;
+            z-index: 2;
+            border-bottom: 2px solid #bbb;
+        }
+
+        .row-header {
+            position: sticky;
+            left: 0;
+            z-index: 1;
+            background-color: #f1f3f5;
+            font-weight: bold;
+            text-align: center;
+            width: 50px;
+            min-width: 50px;
+            box-sizing: border-box;
+            border-right: 2px solid #bbb;
+        }
+
+        .corner {
+            position: sticky;
+            top: 0;
+            left: 0;
+            z-index: 3;
+            background-color: #e9ecef;
+        }
+
+        /* Seçili hücre */
+        .cell.selected {
+            border: 2px solid #1a73e8;
+            outline: none;
+            background-color: #eef4ff;
+        }
+
+        .cell:focus {
+            outline: 2px solid #1a73e8;
+        }
+
+        .sum-target-cell {
+            background-color: #ffcc80 !important;
+            border: 2px solid #ff9800 !important;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="toolbar">
+        <div class="selected-cell-container">
+            <label for="selected-cell">Seçili Hücre:</label>
+            <input type="text" id="selected-cell" disabled />
+        </div>
+        <div class="color-container">
+            <input type="color" id="color-picker" value="#ffff00" />
+            <button id="color-button">Renklendir</button>
+        </div>
+        <div class="button-container">
+            <button id="clear-cell-button">Temizle</button>
+            <button id="format-currency-button">₺</button>
+            <button id="sum-button">Σ</button>
+            <button id="format-date-button">📅</button>
+        </div>
+    </div>
+    <div id="grid-container"></div>
+    <script>
+        const gridContainer = document.getElementById("grid-container");
+        const selectedCellInput = document.getElementById("selected-cell");
+        const colorPicker = document.getElementById("color-picker");
+        const colorButton = document.getElementById("color-button");
+        const sumButton = document.getElementById("sum-button");
+        const clearCellButton = document.getElementById("clear-cell-button");
+        const formatCurrencyButton = document.getElementById(
+            "format-currency-button"
+        );
+        const formatDateButton = document.getElementById("format-date-button");
+
+        const COLS = 26;
+        const ROWS = 100;
+        const STORAGE_KEY = "excelSheetData";
+
+        let selectedCell = null;
+        let currentCellId = null;
+
+        let isSummingMode = false;
+        let sumTargetCell = null;
+
+        // --- Veri Yönetimi ---
+        function getSheetData() {
+            const data = localStorage.getItem(STORAGE_KEY);
+            return data ? JSON.parse(data) : {};
+        }
+
+        function saveSheetData(data) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        }
+
+        function loadSheetData() {
+            const sheetData = getSheetData();
+            for (const cellId in sheetData) {
+                const cell = document.getElementById(cellId);
+                if (cell) {
+                    const data = sheetData[cellId];
+                    cell.textContent = data.formula ?
+                        evaluateFormula(data.formula, cellId) :
+                        data.text || "";
+                    if (data.color) {
+                        cell.style.backgroundColor = data.color;
+                    }
+                }
+            }
+        }
+
+        // --- Geliştirilmiş Formül Motoru ---
+        function parseRange(rangeStr) {
+            const [start, end] = rangeStr.split(":");
+            const startCol = start.match(/[A-Z]+/)[0];
+            const startRow = parseInt(start.match(/[0-9]+/)[0]);
+            const endCol = end ? (end.match(/[A-Z]+/) ? end.match(/[A-Z]+/)[0] : startCol) : startCol;
+            const endRow = end ? (end.match(/[0-9]+/) ? parseInt(end.match(/[0-9]+/)[0]) : startRow) : startRow;
+
+            const startColIndex = startCol.charCodeAt(0) - 65;
+            const endColIndex = endCol.charCodeAt(0) - 65;
+
+            const cellIds = [];
+            for (
+                let c = Math.min(startColIndex, endColIndex); c <= Math.max(startColIndex, endColIndex); c++
+            ) {
+                for (
+                    let r = Math.min(startRow, endRow); r <= Math.max(startRow, endRow); r++
+                ) {
+                    cellIds.push(`${String.fromCharCode(65 + c)}${r}`);
+                }
+            }
+            return cellIds;
+        }
+
+        function getCellValue(cellId) {
+            const sheetData = getSheetData();
+            const data = sheetData[cellId];
+            if (!data) return 0;
+
+            if (typeof data.text === "string" && data.text.includes("₺")) {
+                const cleanedValue = data.text
+                    .replace(/[^\d,]/g, "")
+                    .replace(",", ".");
+                return parseFloat(cleanedValue) || 0;
+            }
+
+            return data.value !== undefined ?
+                data.value :
+                typeof data.text === "string" ?
+                parseFloat(data.text.replace(",", ".")) || 0 :
+                0;
+        }
+
+        function evaluateFormula(formula, cellId) {
+            currentCellId = cellId;
+            const sheetData = getSheetData();
+
+            if (
+                formula.toUpperCase() === "=ŞİMDİ()" ||
+                formula.toUpperCase() === "=NOW()"
+            ) {
+                return new Date().toLocaleString("tr-TR");
+            }
+
+            const sumMatch = formula.match(/^=(?:TOPLA|SUM)\(([A-Za-z0-9:]+)\)$/i);
+            if (sumMatch) {
+                const range = sumMatch[1];
+                const cellIds = parseRange(range);
+                const sum = cellIds.reduce(
+                    (acc, cellId) => acc + getCellValue(cellId),
+                    0
+                );
+
+                const parts = sum.toFixed(2).split(".");
+                const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+                const result = `${integerPart},${parts[1]}₺`;
+
+                sheetData[cellId] = {
+                    text: result,
+                    value: sum,
+                    formula: formula,
+                    color: sheetData[cellId]?.color || "",
+                };
+                saveSheetData(sheetData);
+
+                return result;
+            }
+
+            return formula;
+        }
+
+        // --- Grid ve Olay Yöneticileri ---
+        function createGrid() {
+            const grid = document.createElement("div");
+            grid.className = "grid";
+
+            let gridColumns = "50px";
+            for (let i = 0; i < COLS; i++) {
+                gridColumns += " minmax(100px, max-content)";
+            }
+            grid.style.gridTemplateColumns = gridColumns;
+
+            const corner = document.createElement("div");
+            corner.className = "cell header corner";
+            grid.appendChild(corner);
+
+            for (let i = 0; i < COLS; i++) {
+                const header = document.createElement("div");
+                header.className = "cell header";
+                header.textContent = String.fromCharCode(65 + i);
+                grid.appendChild(header);
+            }
+
+            for (let i = 1; i <= ROWS; i++) {
+                const rowHeader = document.createElement("div");
+                rowHeader.className = "cell row-header";
+                rowHeader.textContent = i;
+                grid.appendChild(rowHeader);
+
+                for (let j = 0; j < COLS; j++) {
+                    const cell = document.createElement("div");
+                    cell.className = "cell";
+                    cell.id = `${String.fromCharCode(65 + j)}${i}`;
+                    grid.appendChild(cell);
+                }
+            }
+
+            gridContainer.appendChild(grid);
+        }
+
+        // Hücre seçimi
+        gridContainer.addEventListener("click", (e) => {
+            const clickedCell = e.target;
+            if (clickedCell.classList.contains("cell") && !clickedCell.classList.contains("header")) {
+                if (!isSummingMode) {
+                    if (selectedCell) {
+                        selectedCell.classList.remove("selected");
+                    }
+                    selectedCell = clickedCell;
+                    selectedCell.classList.add("selected");
+                    selectedCellInput.value = selectedCell.id;
+                }
+            }
+        });
+
+        // Hücre çoklu seçimi için mousedown, mouseover ve mouseup olayları
+        let isMultiSelecting = false;
+        let startCell = null;
+        let selectedCellsForSum = new Set();
+
+        gridContainer.addEventListener("mousedown", (e) => {
+            if (e.target.classList.contains("cell") && !e.target.classList.contains("header")) {
+                if (isSummingMode) {
+                    isMultiSelecting = true;
+                    startCell = e.target;
+                    // Önceki seçimi temizle
+                    document.querySelectorAll(".cell.selected").forEach(cell => {
+                        cell.classList.remove("selected");
+                    });
+                    selectedCellsForSum.clear();
+                    startCell.classList.add("selected");
+                    selectedCellsForSum.add(startCell.id);
+                    e.preventDefault();
+                }
+            }
+        });
+
+        gridContainer.addEventListener("mouseover", (e) => {
+            if (isMultiSelecting && e.target.classList.contains("cell") && !e.target.classList.contains("header")) {
+                if (isSummingMode) {
+                    const endCell = e.target;
+                    updateSelection(startCell, endCell);
+                }
+            }
+        });
+
+        document.addEventListener("mouseup", () => {
+            if (isMultiSelecting) {
+                isMultiSelecting = false;
+                startCell = null;
+            }
+        });
+
+        function getCellCoords(cell) {
+            const col = cell.id.match(/[A-Z]+/)[0].charCodeAt(0) - 65;
+            const row = parseInt(cell.id.match(/[0-9]+/)[0]);
+            return {
+                col,
+                row
+            };
+        }
+
+        function updateSelection(start, end) {
+            const startCoords = getCellCoords(start);
+            const endCoords = getCellCoords(end);
+
+            const minCol = Math.min(startCoords.col, endCoords.col);
+            const maxCol = Math.max(startCoords.col, endCoords.col);
+            const minRow = Math.min(startCoords.row, endCoords.row);
+            const maxRow = Math.max(startCoords.row, endCoords.row);
+
+            document.querySelectorAll(".cell.selected").forEach(cell => {
+                if (cell !== sumTargetCell) {
+                    cell.classList.remove("selected");
+                }
+            });
+
+            selectedCellsForSum.clear();
+            for (let r = minRow; r <= maxRow; r++) {
+                for (let c = minCol; c <= maxCol; c++) {
+                    const cellId = `${String.fromCharCode(65 + c)}${r}`;
+                    const cell = document.getElementById(cellId);
+                    if (cell) {
+                        cell.classList.add("selected");
+                        selectedCellsForSum.add(cell.id);
+                    }
+                }
+            }
+        }
+
+        // Hücre düzenleme
+        gridContainer.addEventListener("dblclick", (e) => {
+            if (e.target === selectedCell) {
+                const sheetData = getSheetData();
+                const data = sheetData[e.target.id];
+                if (data && data.formula) {
+                    e.target.textContent = data.formula;
+                } else {
+                    e.target.textContent = data?.text || "";
+                }
+                e.target.contentEditable = true;
+                e.target.focus();
+            }
+        });
+
+        function finishEditing(cell) {
+            if (!cell || !cell.isContentEditable) return;
+            cell.contentEditable = false;
+
+            const sheetData = getSheetData();
+            const cellId = cell.id;
+            const text = cell.textContent;
+
+            if (!sheetData[cellId]) sheetData[cellId] = {};
+
+            if (text.startsWith("=")) {
+                sheetData[cellId].formula = text;
+                sheetData[cellId].text = evaluateFormula(text, cellId);
+                delete sheetData[cellId].value;
+            } else {
+                sheetData[cellId].text = text;
+                delete sheetData[cellId].formula;
+
+                const numValue = parseFloat(
+                    text.replace(/[^\d,.-]/g, "").replace(",", ".")
+                );
+                sheetData[cellId].value = isNaN(numValue) ? text : numValue;
+            }
+
+            saveSheetData(sheetData);
+        }
+
+        gridContainer.addEventListener(
+            "blur",
+            (e) => {
+                if (e.target.isContentEditable) {
+                    finishEditing(e.target);
+                }
+            },
+            true
+        );
+
+        gridContainer.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" && e.target.isContentEditable) {
+                e.preventDefault();
+                finishEditing(e.target);
+            }
+        });
+
+        // --- Toplama Fonksiyonu ---
+        function handleSumOperation() {
+            if (!selectedCell) {
+                //alert("Lütfen toplamın yazılacağı hücreyi seçin.");
+                return false;
+            }
+
+            if (isSummingMode) {
+                // İkinci tıklama: Toplama işlemini tamamla
+                let sum = 0;
+                selectedCellsForSum.forEach(cellId => {
+                    sum += getCellValue(cellId);
+                });
+
+                // Sonucu hedef hücreye yaz
+                const parts = sum.toFixed(2).split(".");
+                const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+                const formattedSum = `${integerPart},${parts[1]}₺`;
+
+                selectedCell.textContent = formattedSum;
+
+                // Veriyi kaydet
+                const sheetData = getSheetData();
+                sheetData[selectedCell.id] = {
+                    text: formattedSum,
+                    value: sum,
+                    color: selectedCell.style.backgroundColor || "",
+                };
+                saveSheetData(sheetData);
+
+                // Modu sıfırla
+                isSummingMode = false;
+                sumTargetCell.classList.remove("sum-target-cell");
+                sumTargetCell = null;
+                document.querySelectorAll(".cell.selected").forEach(cell => {
+                    cell.classList.remove("selected");
+                });
+
+            } else {
+                // İlk tıklama: Toplama modunu başlat
+                //alert("Lütfen toplanacak hücreleri seçin ve tekrar 'Topla' butonuna basın.");
+                isSummingMode = true;
+                sumTargetCell = selectedCell;
+                sumTargetCell.classList.add("sum-target-cell");
+
+                // Mevcut seçimi temizle
+                if (selectedCell) {
+                    selectedCell.classList.remove("selected");
+                }
+            }
+        }
+
+        // Araç çubuğu işlevleri
+        colorButton.addEventListener("click", () => {
+            if (selectedCell) {
+                const color = colorPicker.value;
+                selectedCell.style.backgroundColor = color;
+                const sheetData = getSheetData();
+                if (!sheetData[selectedCell.id]) sheetData[selectedCell.id] = {};
+                sheetData[selectedCell.id].color = color;
+                saveSheetData(sheetData);
+            }
+        });
+
+        clearCellButton.addEventListener("click", () => {
+            if (selectedCell) {
+                const sheetData = getSheetData();
+                delete sheetData[selectedCell.id];
+                selectedCell.textContent = "";
+                selectedCell.style.backgroundColor = "";
+                saveSheetData(sheetData);
+            }
+        });
+
+        formatCurrencyButton.addEventListener("click", () => {
+            if (selectedCell) {
+                const cellValue = selectedCell.textContent.trim();
+                const cleanedValue = cellValue
+                    .replace(/[^\d,.-]/g, "")
+                    .replace(/\./g, "")
+                    .replace(",", ".");
+                const numericValue = parseFloat(cleanedValue);
+                if (!isNaN(numericValue)) {
+                    const parts = numericValue.toFixed(2).split(".");
+                    const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+                    const formattedValue = `${integerPart},${parts[1]}₺`;
+                    selectedCell.textContent = formattedValue;
+                    const sheetData = getSheetData();
+                    sheetData[selectedCell.id] = {
+                        text: formattedValue,
+                        value: numericValue,
+                        color: selectedCell.style.backgroundColor || "",
+                    };
+                    saveSheetData(sheetData);
+                } else {
+                    alert("Geçerli bir sayı girin! Örnek: 1234 veya 1234,56");
+                }
+            }
+        });
+
+        formatDateButton.addEventListener("click", () => {
+            if (selectedCell) {
+                const cellText = selectedCell.textContent.trim();
+                if (cellText) {
+                    const parts = cellText.split("/");
+                    if (parts.length === 2) {
+                        const day = parseInt(parts[0], 10);
+                        const month = parseInt(parts[1], 10);
+                        const year = new Date().getFullYear();
+                        if (!isNaN(day) && !isNaN(month)) {
+                            const formattedDate = `${day
+                                .toString()
+                                .padStart(2, "0")}.${month
+                                    .toString()
+                                    .padStart(2, "0")}.${year}`;
+                            selectedCell.textContent = formattedDate;
+                            const sheetData = getSheetData();
+                            sheetData[selectedCell.id] = {
+                                text: formattedDate,
+                                color: selectedCell.style.backgroundColor || "",
+                            };
+                            saveSheetData(sheetData);
+                        }
+                    }
+                }
+            }
+        });
+
+        sumButton.addEventListener("click", handleSumOperation);
+
+        createGrid();
+        loadSheetData();
+    </script>
+</body>
+
+</html>
