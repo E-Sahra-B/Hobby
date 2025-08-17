@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Escape the Maze</title>
+  <style>
+    :root {
+      --bg: #0f172a; /* slate-900 */
+      --panel: #111827; /* gray-900 */
+      --ink: #e5e7eb; /* gray-200 */
+      --accent: #38bdf8; /* sky-400 */
+      --accent-2: #22d3ee; /* cyan-400 */
+      --good: #34d399; /* green-400 */
+      --warn: #f59e0b; /* amber-500 */
+      --bad: #ef4444;  /* red-500 */
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      background: radial-gradient(1200px 800px at 20% -10%, #0b1227 0%, var(--bg) 60%);
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+      display: grid;
+      place-items: center;
+    }
+    .wrap {
+      width: min(92vw, 980px);
+      display: grid;
+      gap: 16px;
+    }
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    h1 { font-size: clamp(1.2rem, 2.5vw, 1.8rem); margin: 0; letter-spacing: .5px; }
+    .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    button {
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      border: none; color: #001018; font-weight: 700; padding: 10px 14px; border-radius: 12px;
+      cursor: pointer; box-shadow: 0 6px 18px rgba(56,189,248,.25);
+    }
+    button:hover { filter: brightness(1.05); }
+    button.secondary {
+      background: #1f2937; color: var(--ink); box-shadow: inset 0 0 0 1px #374151;
+    }
+    .stats {
+      display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px;
+    }
+    .stat {
+      background: linear-gradient(180deg, #0b1220, #0a0f1a);
+      border: 1px solid #1f2937; border-radius: 14px; padding: 12px; 
+      display: grid; gap: 4px; min-height: 60px;
+    }
+    .stat .label { font-size: 12px; opacity: .75; }
+    .stat .value { font-size: 18px; font-weight: 800; letter-spacing: .3px; }
+
+    .board {
+      position: relative;
+      background: #030712;
+      border: 1px solid #1f2937; border-radius: 16px; padding: 12px; 
+      box-shadow: 0 20px 60px rgba(0,0,0,.35);
+    }
+
+    canvas { width: 100%; height: auto; display: block; border-radius: 10px; background: #0b1020; }
+
+    .hint {
+      font-size: 12px; opacity: .75; text-align: center;
+    }
+
+    .toast {
+      position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
+      font-weight: 800; text-transform: uppercase; letter-spacing: .1em; 
+      color: white; text-shadow: 0 6px 28px rgba(34,211,238,.45);
+      mix-blend-mode: screen; opacity: 0; transition: opacity .25s ease;
+    }
+    .toast.show { opacity: 1; }
+
+    .badge { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+    .badge.good { background: rgba(52,211,153,.15); color: var(--good); border: 1px solid rgba(52,211,153,.4); }
+    .badge.warn { background: rgba(245,158,11,.12); color: var(--warn); border: 1px solid rgba(245,158,11,.4); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>🧭 Escape the Maze</h1>
+      <div class="controls">
+        <button id="replayBtn" title="Generate a new maze (R)">↻ Replay</button>
+        <button id="togglePathBtn" class="secondary" title="Toggle show optimal path (P)">Show Optimal Path</button>
+      </div>
+    </header>
+
+    <section class="stats">
+      <div class="stat"><div class="label">Timer</div><div id="time" class="value">0.0s</div></div>
+      <div class="stat"><div class="label">Steps</div><div id="steps" class="value">0</div></div>
+      <div class="stat"><div class="label">Shortest Path</div><div class="value"><span id="shortLen">—</span> <span id="shortBadge" class="badge warn">Hidden</span></div></div>
+      <div class="stat"><div class="label">Status</div><div id="status" class="value">Ready</div></div>
+    </section>
+
+    <div class="board">
+      <canvas id="maze" width="900" height="900"></canvas>
+      <div id="toast" class="toast">Shortest Path! Bonus Achieved 🎉</div>
+    </div>
+
+    <div class="hint">Use <b>Arrow Keys</b> or <b>WASD</b> to move. Reach the glowing exit. Avoid dead ends, or embrace them 😉</div>
+  </div>
+
+  <script>
+    // ----- Configuration -----
+    const CONFIG = {
+      cols: 25,          // grid width
+      rows: 25,          // grid height
+      margin: 12,        // canvas inner padding (px)
+      wall: 3,           // wall thickness (px)
+      anim: 120,         // ms between carve steps during generation (set 0 for instant)
+      showInstant: true, // draw instantly without carve animation when true
+      revealOptLenOnWin: true,
+      shortestBonusMs: -5000, // subtract time when shortest path used
+    };
+
+    const canvas = document.getElementById('maze');
+    const ctx = canvas.getContext('2d');
+
+    // Responsive canvas sizing
+    function fitCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      // keep square backing store while preserving crispness
+      const size = Math.min(Math.floor(rect.width), 900);
+      canvas.width = size; canvas.height = size;
+      drawAll();
+    }
+    window.addEventListener('resize', fitCanvas);
+
+    // Maze cell representation with walls: top,right,bottom,left
+    class Cell {
+      constructor(c, r) {
+        this.c = c; this.r = r;
+        this.walls = [true, true, true, true];
+        this.visited = false;
+      }
+    }
+
+    // ----- Maze State -----
+    let grid, start, goal, player, shortestPath = [], shortestLen = null;
+    let cellSize, offset;
+    let steps = 0;
+    let showOptimal = false;
+    let timerId = null, startTime = null, elapsed = 0, finished = false;
+
+    const elTime   = document.getElementById('time');
+    const elSteps  = document.getElementById('steps');
+    const elStatus = document.getElementById('status');
+    const elShort  = document.getElementById('shortLen');
+    const elBadge  = document.getElementById('shortBadge');
+    const toast    = document.getElementById('toast');
+
+    function idx(c, r) { return r * CONFIG.cols + c; }
+
+    function buildGrid() {
+      grid = Array.from({ length: CONFIG.cols * CONFIG.rows }, (_, i) => new Cell(i % CONFIG.cols, Math.floor(i / CONFIG.cols)));
+    }
+
+    // Randomized DFS (recursive backtracker)
+    function generateMaze() {
+      buildGrid();
+      const stack = [];
+      const startCell = grid[0];
+      startCell.visited = true;
+      stack.push(startCell);
+
+      const dirs = [
+        [0, -1, 0], // up, wall index 0 pairs with next's 2
+        [1, 0, 1],  // right, 1 pairs with 3
+        [0, 1, 2],  // down, 2 pairs with 0
+        [-1, 0, 3], // left, 3 pairs with 1
+      ];
+
+      while (stack.length) {
+        const current = stack[stack.length - 1];
+        const options = [];
+        for (const [dx, dy] of dirs) {
+          const nc = current.c + dx, nr = current.r + dy;
+          if (nc >= 0 && nr >= 0 && nc < CONFIG.cols && nr < CONFIG.rows) {
+            const n = grid[idx(nc, nr)];
+            if (!n.visited) options.push(n);
+          }
+        }
+        if (options.length === 0) { stack.pop(); continue; }
+        const next = options[Math.floor(Math.random() * options.length)];
+        // remove walls between current and next
+        const dc = next.c - current.c, dr = next.r - current.r;
+        if (dc === 1 && dr === 0) { current.walls[1] = false; next.walls[3] = false; }
+        if (dc === -1 && dr === 0) { current.walls[3] = false; next.walls[1] = false; }
+        if (dc === 0 && dr === 1) { current.walls[2] = false; next.walls[0] = false; }
+        if (dc === 0 && dr === -1) { current.walls[0] = false; next.walls[2] = false; }
+        next.visited = true; stack.push(next);
+      }
+      // reset visited flags
+      for (const c of grid) c.visited = false;
+    }
+
+    // BFS for shortest path from start to goal
+    function computeShortestPath() {
+      const q = [];
+      const prev = new Map();
+      const seen = new Set();
+      const startId = idx(start.c, start.r);
+      const goalId = idx(goal.c, goal.r);
+      q.push(startId); seen.add(startId);
+      while (q.length) {
+        const cur = q.shift();
+        if (cur === goalId) break;
+        const cell = grid[cur];
+        const { c, r, walls } = cell;
+        const neighbors = [];
+        if (!walls[0] && r > 0) neighbors.push(idx(c, r - 1));
+        if (!walls[1] && c < CONFIG.cols - 1) neighbors.push(idx(c + 1, r));
+        if (!walls[2] && r < CONFIG.rows - 1) neighbors.push(idx(c, r + 1));
+        if (!walls[3] && c > 0) neighbors.push(idx(c - 1, r));
+        for (const n of neighbors) {
+          if (!seen.has(n)) { seen.add(n); prev.set(n, cur); q.push(n); }
+        }
+      }
+      // reconstruct
+      const path = [];
+      let cur = goalId;
+      if (!prev.has(cur) && cur !== startId) {
+        return []; // no path (shouldn't happen)
+      }
+      while (cur !== undefined) {
+        path.push(cur);
+        if (cur === startId) break;
+        cur = prev.get(cur);
+      }
+      path.reverse();
+      shortestPath = path.map(id => grid[id]);
+      shortestLen = Math.max(0, shortestPath.length - 1); // edges
+      elShort.textContent = shortestLen;
+      elBadge.textContent = 'Hidden'; elBadge.className = 'badge warn';
+    }
+
+    function resetGame() {
+      finished = false; steps = 0; elapsed = 0; showOptimal = false;
+      elSteps.textContent = steps;
+      elStatus.textContent = 'Exploring…';
+      toast.classList.remove('show');
+      if (timerId) cancelAnimationFrame(timerId);
+      startTime = performance.now();
+      tick();
+    }
+
+    function init() {
+      generateMaze();
+      start = { c: 0, r: 0 };
+      goal  = { c: CONFIG.cols - 1, r: CONFIG.rows - 1 };
+      player = { c: start.c, r: start.r };
+      computeLayout();
+      computeShortestPath();
+      resetGame();
+      drawAll();
+    }
+
+    function computeLayout() {
+      const size = Math.min(canvas.width, canvas.height);
+      const usable = size - CONFIG.margin * 2;
+      cellSize = Math.floor(usable / Math.max(CONFIG.cols, CONFIG.rows));
+      const gridW = cellSize * CONFIG.cols;
+      const gridH = cellSize * CONFIG.rows;
+      offset = { x: (canvas.width - gridW)/2, y: (canvas.height - gridH)/2 };
+    }
+
+    // Drawing
+    function clear() { ctx.clearRect(0, 0, canvas.width, canvas.height); }
+
+    function drawMaze() {
+      ctx.lineWidth = CONFIG.wall;
+      ctx.strokeStyle = '#1f2937';
+      ctx.lineCap = 'square';
+
+      for (const cell of grid) {
+        const x = offset.x + cell.c * cellSize;
+        const y = offset.y + cell.r * cellSize;
+        const w = cellSize, h = cellSize;
+        const [t, r, b, l] = cell.walls;
+        ctx.beginPath();
+        if (t) { ctx.moveTo(x, y); ctx.lineTo(x + w, y); }
+        if (r) { ctx.moveTo(x + w, y); ctx.lineTo(x + w, y + h); }
+        if (b) { ctx.moveTo(x + w, y + h); ctx.lineTo(x, y + h); }
+        if (l) { ctx.moveTo(x, y + h); ctx.lineTo(x, y); }
+        ctx.stroke();
+      }
+      // Start & Goal highlights
+      drawCellGlow(start.c, start.r, '#22d3ee');
+      drawCellGlow(goal.c, goal.r, '#34d399');
+    }
+
+    function drawCellGlow(c, r, color) {
+      const x = offset.x + c * cellSize + cellSize/2;
+      const y = offset.y + r * cellSize + cellSize/2;
+      const rad = Math.max(10, cellSize * 0.45);
+      const g = ctx.createRadialGradient(x, y, 2, x, y, rad);
+      g.addColorStop(0, color);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2); ctx.fill();
+    }
+
+    function drawPlayer() {
+      const x = offset.x + player.c * cellSize + cellSize/2;
+      const y = offset.y + player.r * cellSize + cellSize/2;
+      const r = Math.max(6, cellSize * 0.28);
+      // body
+      ctx.fillStyle = '#60a5fa';
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+      // outline
+      ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,.2)';
+      ctx.stroke();
+    }
+
+    function drawOptimalPath() {
+      if (!showOptimal || !shortestPath.length) return;
+      ctx.lineWidth = Math.max(2, Math.floor(cellSize * 0.12));
+      ctx.strokeStyle = 'rgba(56,189,248,.75)';
+      ctx.beginPath();
+      for (let i = 0; i < shortestPath.length; i++) {
+        const cell = shortestPath[i];
+        const x = offset.x + cell.c * cellSize + cellSize/2;
+        const y = offset.y + cell.r * cellSize + cellSize/2;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+
+    function drawAll() {
+      if (!grid) return;
+      computeLayout();
+      clear();
+      drawMaze();
+      drawOptimalPath();
+      drawPlayer();
+    }
+
+    // Movement
+    function canMove(dc, dr) {
+      const cell = grid[idx(player.c, player.r)];
+      if (dc === 0 && dr === -1 && !cell.walls[0]) return true;
+      if (dc === 1 && dr === 0 && !cell.walls[1]) return true;
+      if (dc === 0 && dr === 1 && !cell.walls[2]) return true;
+      if (dc === -1 && dr === 0 && !cell.walls[3]) return true;
+      return false;
+    }
+
+    function move(dc, dr) {
+      if (finished) return;
+      if (!canMove(dc, dr)) return;
+      player.c += dc; player.r += dr; steps++; elSteps.textContent = steps;
+      drawAll();
+      // check finish
+      if (player.c === goal.c && player.r === goal.r) {
+        finish();
+      }
+    }
+
+    // Timer
+    function tick() {
+      if (finished) return;
+      const now = performance.now();
+      elapsed = now - startTime;
+      elTime.textContent = (elapsed / 1000).toFixed(1) + 's';
+      timerId = requestAnimationFrame(tick);
+    }
+
+    function finish() {
+      finished = true; cancelAnimationFrame(timerId);
+      const timeMs = elapsed;
+      let message = `Finished in ${(timeMs/1000).toFixed(2)}s with ${steps} steps.`;
+      let usedShortest = false;
+      if (shortestLen != null) {
+        if (steps === shortestLen) {
+          usedShortest = true;
+          toast.classList.add('show');
+          setTimeout(() => toast.classList.remove('show'), 1500);
+          elBadge.textContent = 'Achieved'; elBadge.className = 'badge good';
+          // apply bonus (reduce shown time)
+          const bonus = CONFIG.shortestBonusMs;
+          const finalMs = Math.max(0, timeMs + bonus);
+          message += ` Shortest Path Bonus! Final time ${(finalMs/1000).toFixed(2)}s.`;
+          elTime.textContent = (finalMs/1000).toFixed(1) + 's';
+        } else {
+          const extra = steps - shortestLen;
+          elBadge.textContent = 'Missed'; elBadge.className = 'badge warn';
+          message += ` (${extra} steps over optimal)`;
+        }
+      }
+      elStatus.textContent = usedShortest ? '🏆 Perfect Route!' : '✅ Escaped!';
+      if (CONFIG.revealOptLenOnWin) {
+        elShort.textContent = shortestLen;
+      }
+    }
+
+    // Input
+    const keyMap = {
+      ArrowUp: [0,-1], ArrowRight: [1,0], ArrowDown: [0,1], ArrowLeft: [-1,0],
+      w: [0,-1], d: [1,0], s: [0,1], a: [-1,0],
+      W: [0,-1], D: [1,0], S: [0,1], A: [-1,0],
+    };
+    window.addEventListener('keydown', (e) => {
+      if (keyMap[e.key]) { e.preventDefault(); const [dc,dr] = keyMap[e.key]; move(dc,dr); }
+      if (e.key === 'r' || e.key === 'R') { e.preventDefault(); replay(); }
+      if (e.key === 'p' || e.key === 'P') { e.preventDefault(); toggleOptimalPath(); }
+    });
+
+    // UI Buttons
+    document.getElementById('replayBtn').addEventListener('click', replay);
+    document.getElementById('togglePathBtn').addEventListener('click', toggleOptimalPath);
+    function replay() {
+      init();
+    }
+    function toggleOptimalPath() {
+      showOptimal = !showOptimal;
+      document.getElementById('togglePathBtn').textContent = showOptimal ? 'Hide Optimal Path' : 'Show Optimal Path';
+      drawAll();
+    }
+
+    // Boot
+    fitCanvas();
+    init();
+  </script>
+</body>
+</html>

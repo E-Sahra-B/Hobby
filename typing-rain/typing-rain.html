@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Typing Rain</title>
+<style>
+  :root{
+    --sky-top:#0e0f24;
+    --sky-mid:#111332;
+    --sky-bot:#0b0c1a;
+    --neon:#7dd3fc;
+    --accent:#a78bfa;
+    --good:#22c55e;
+    --bad:#ef4444;
+    --panel:#0b0c1acc;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Segoe UI Symbol";
+    background: radial-gradient(100% 140% at 50% 0%, var(--sky-top) 0%, var(--sky-mid) 50%, var(--sky-bot) 100%);
+    color:#e5e7eb;
+    overflow:hidden;
+  }
+
+  /* Header HUD */
+  .hud{
+    position:fixed; inset: 16px 16px auto 16px;
+    display:flex; gap:12px; align-items:center; z-index:3;
+    background:var(--panel); backdrop-filter: blur(6px);
+    border:1px solid #1f2937; border-radius:14px; padding:10px 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.35), inset 0 0 40px rgba(124,58,237,.07);
+  }
+  .hud .pill{
+    padding:6px 10px; border-radius:999px; background:#0b1220;
+    border:1px solid #1f2937; font-weight:600; letter-spacing:.2px;
+  }
+  .hud .pill b{ color:var(--neon); font-weight:700 }
+  .hud .sep{ width:1px; height:20px; background:#1f2937; margin:0 6px}
+
+  /* Footer hint */
+  .hint{
+    position:fixed; inset:auto 16px 16px 16px; z-index:3;
+    display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap;
+    color:#9ca3af; font-size:13px;
+    background:var(--panel); border:1px solid #1f2937; border-radius:12px; padding:8px 10px;
+  }
+  .hint kbd{
+    background:#0b1220; border:1px solid #1f2937; border-bottom-color:#0b0f19;
+    padding:2px 6px; border-radius:6px; font-weight:600; color:#cbd5e1;
+  }
+  .btn{
+    appearance:none; border:none; cursor:pointer; font-weight:700; letter-spacing:.3px;
+    color:#e5e7eb; background:#111827; border:1px solid #1f2937; padding:8px 12px; border-radius:10px;
+    transition: transform .06s ease, box-shadow .2s ease;
+  }
+  .btn:hover{ box-shadow:0 8px 22px rgba(0,0,0,.35) }
+  .btn:active{ transform: translateY(1px) }
+  .btn.primary{ background:linear-gradient(135deg,#312e81,#1f2937); border-color:#4338ca }
+  .btn.success{ background:linear-gradient(135deg,#14532d,#1f2937); border-color:#16a34a }
+  .btn.warn{ background:linear-gradient(135deg,#7f1d1d,#1f2937); border-color:#ef4444 }
+
+  /* Center overlay (start / pause / game over) */
+  .overlay{
+    position:fixed; inset:0; display:grid; place-items:center; z-index:4;
+    pointer-events:none;
+  }
+  .card{
+    pointer-events:auto;
+    background:linear-gradient(180deg, rgba(17,24,39,.95), rgba(11,15,25,.92));
+    border:1px solid #1f2937; border-radius:18px; padding:20px 18px; width:min(92vw,520px);
+    box-shadow: 0 30px 80px rgba(0,0,0,.55), inset 0 0 80px rgba(124,58,237,.08);
+    text-align:center;
+  }
+  .title{ font-weight:800; font-size:28px; letter-spacing:.5px; margin:2px 0 8px }
+  .subtitle{ color:#a5b4fc; margin:0 0 14px; font-weight:600 }
+  .controls{ display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:8px }
+  .small{ font-size:12px; color:#94a3b8 }
+
+  /* Canvas (city + words) */
+  canvas{ position:fixed; inset:0; width:100vw; height:100vh; display:block; }
+
+  /* Decorative neon line */
+  .neon-line{
+    position:fixed; left:0; right:0; top:0; height:2px; z-index:2;
+    background:linear-gradient(90deg, transparent, rgba(99,102,241,.7), transparent);
+    filter:drop-shadow(0 0 6px rgba(99,102,241,.8));
+    opacity:.8;
+  }
+</style>
+</head>
+<body>
+<div class="neon-line"></div>
+
+<canvas id="scene" aria-label="Typing Rain canvas" role="img"></canvas>
+
+<!-- HUD -->
+<div class="hud" id="hud">
+  <span class="pill">Score: <b id="score">0</b></span>
+  <span class="pill">Accuracy: <b id="acc">100.0%</b></span>
+  <span class="pill">Streak: <b id="streak">0</b></span>
+  <span class="sep"></span>
+  <span class="pill">Level: <b id="level">1</b></span>
+  <span class="pill">Speed: <b id="speed">1.0x</b></span>
+  <button id="pauseBtn" class="btn">⏸ Pause</button>
+  <button id="restartBtn" class="btn">↻ Restart</button>
+</div>
+
+<!-- Helper / footer -->
+<div class="hint">
+  <div>Type the falling words before they hit the ground. Correct keys boost score; mistakes lower accuracy.</div>
+  <div>
+    <kbd>Any Letter</kbd> to type • <kbd>Space</kbd> to switch target • <kbd>P</kbd> pause/resume
+  </div>
+</div>
+
+<!-- Overlays -->
+<div class="overlay" id="startOverlay">
+  <div class="card">
+    <div class="title">Typing Rain</div>
+    <div class="subtitle">Beat the downpour. Save the city skyline.</div>
+    <div style="display:flex; gap:10px; justify-content:center; margin:12px 0 16px">
+      <button id="playBtn" class="btn primary">▶ Start</button>
+      <button id="howBtn" class="btn">❔ How to Play</button>
+    </div>
+    <div id="how" class="small" style="display:none; text-align:left; margin:0 auto; max-width:460px; line-height:1.5">
+      • Words fall like raindrops. Press the matching letters.<br/>
+      • If multiple words match, the one you already started is targeted.<br/>
+      • Press <b>Space</b> to switch to the closest matching word.<br/>
+      • Difficulty rises over time: faster rain + more spawns.<br/>
+      • Game ends when any word hits the ground. Good luck!
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="gameOverOverlay" style="display:none">
+  <div class="card">
+    <div class="title">Game Over</div>
+    <div class="subtitle" id="finalStats">You scored 0.</div>
+    <div class="controls">
+      <button id="againBtn" class="btn success">Play Again</button>
+      <button id="shareBtn" class="btn">Share</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('scene');
+  const ctx = canvas.getContext('2d');
+
+  // --- Responsive canvas
+  function resize(){
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    canvas.width = Math.floor(innerWidth * dpr);
+    canvas.height = Math.floor(innerHeight * dpr);
+    canvas.style.width = innerWidth + 'px';
+    canvas.style.height = innerHeight + 'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  addEventListener('resize', resize, { passive:true });
+  resize();
+
+  // --- Game state
+  const hud = {
+    scoreEl: document.getElementById('score'),
+    accEl: document.getElementById('acc'),
+    streakEl: document.getElementById('streak'),
+    levelEl: document.getElementById('level'),
+    speedEl: document.getElementById('speed'),
+  };
+
+  const startOverlay = document.getElementById('startOverlay');
+  const gameOverOverlay = document.getElementById('gameOverOverlay');
+  const finalStats = document.getElementById('finalStats');
+
+  const playBtn = document.getElementById('playBtn');
+  const howBtn = document.getElementById('howBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const restartBtn = document.getElementById('restartBtn');
+  const againBtn = document.getElementById('againBtn');
+  const shareBtn = document.getElementById('shareBtn');
+
+  const howPanel = document.getElementById('how');
+  howBtn.onclick = () => {
+    howPanel.style.display = howPanel.style.display === 'none' ? 'block' : 'none';
+  };
+  //wordsPool here
+  const wordsPool = `
+  rain city neon skyline shadow pixel future dream night code array canvas logic planet comet drift storm pulse glow
+  window street thunder shimmer breeze sonic echo signal orbit syntax lambda rocket quantum cyber drift cloud flame
+  vector galaxy kernel module byte debug render memory pointer packet mocha brush velvet ember photon crystal lilac
+  tunnel river harbor bridge alley metro taxi coffee neon noir jazz rhythm tempo chord lyric verse beat tempo
+  polar arctic desert forest jungle ocean island coral magma lava frost blaze swirl twirl glide slide sprint
+  random forever lucky velvet silk copper silver golden azure indigo violet amber scarlet ruby pearl onyx quartz
+  swift brave clever bright crisp sharp rapid vivid proud bold nifty tidy spicy zesty fizzy breezy silky cozy
+  galaxy orbit comet nova zenith apex nadir pulse flux quark charm lepton muon tau
+  `.trim().split(/\s+/).filter(Boolean);
+
+  let game;
+  const NEW = () => ({
+    running: false,
+    over: false,
+    score: 0,
+    correctKeys: 0,
+    totalKeys: 0,
+    streak: 0,
+    level: 1,
+    levelTime: 0,
+    baseSpeed: 50,      // pixels per second baseline
+    speedScale: 1,      // increases with difficulty
+    spawnEvery: 1200,   // ms between spawns (decreases)
+    lastSpawnAt: 0,
+    words: [],
+    targetId: null,
+    lastTs: 0,
+    rainStreaks: new Array(60).fill(0).map(()=>({
+      x: Math.random()*innerWidth,
+      y: Math.random()*innerHeight,
+      len: 6+Math.random()*18,
+      speed: 180+Math.random()*220,
+      alpha: .08+.12*Math.random()
+    }))
+  });
+
+  function reset(){
+    game = NEW();
+    updateHUD();
+    startOverlay.style.display = 'grid';
+    gameOverOverlay.style.display = 'none';
+  }
+  reset();
+
+  function start(){
+    if (game.running) return;
+    game.running = true;
+    game.over = false;
+    startOverlay.style.display = 'none';
+    game.lastTs = performance.now();
+    requestAnimationFrame(loop);
+  }
+
+  function gameOver(){
+    game.running = false;
+    game.over = true;
+    finalStats.innerHTML = `Score <b>${game.score}</b> • Accuracy <b>${accuracyPct()}%</b> • Level <b>${game.level}</b>`;
+    gameOverOverlay.style.display = 'grid';
+  }
+
+  // --- Helpers
+  function rndWord(){
+    return wordsPool[(Math.random()*wordsPool.length)|0];
+  }
+  function wordWidth(text, size){
+    ctx.save();
+    ctx.font = `${size}px ui-sans-serif,system-ui,Segoe UI,Roboto,Arial`;
+    const w = ctx.measureText(text).width;
+    ctx.restore();
+    return w;
+  }
+  function spawnWord(){
+    const text = rndWord();
+    const size = 16 + Math.floor(Math.random()*8) + Math.min(6, game.level); // slightly bigger on higher levels
+    const margin = 20;
+    const x = margin + Math.random()*(innerWidth - margin*2 - wordWidth(text, size));
+    const y = -10;
+    const speed = game.baseSpeed * (0.6 + Math.random()*0.6) * game.speedScale; // px/sec
+    const id = Math.random().toString(36).slice(2);
+    game.words.push({ id, text, x, y, size, speed, typed:0, born: performance.now() });
+    // If nothing targeted, pick this if it's near the center
+    if (game.targetId == null){
+      game.targetId = id;
+    }
+  }
+
+  function accuracyPct(){
+    const pct = game.totalKeys ? (game.correctKeys / game.totalKeys * 100) : 100;
+    return (Math.round(pct*10)/10).toFixed(1);
+  }
+
+  function promoteDifficulty(dt){
+    game.levelTime += dt;
+    // Every ~15s, level up
+    if (game.levelTime >= 15){
+      game.levelTime = 0;
+      game.level++;
+      // Faster rain & faster spawns
+      game.speedScale = Math.min(3.5, game.speedScale + 0.15);
+      game.spawnEvery = Math.max(350, game.spawnEvery - 70);
+      flashHUD();
+      updateHUD();
+    }
+  }
+
+  function flashHUD(){
+    // quick visual feedback
+    const hudEl = document.getElementById('hud');
+    hudEl.style.boxShadow = '0 0 0 2px rgba(124,58,237,.45), 0 0 40px rgba(124,58,237,.35)';
+    setTimeout(()=> hudEl.style.boxShadow = '', 220);
+  }
+
+  function updateHUD(){
+    hud.scoreEl.textContent = game.score;
+    hud.accEl.textContent = `${accuracyPct()}%`;
+    hud.streakEl.textContent = game.streak;
+    hud.levelEl.textContent = game.level;
+    hud.speedEl.textContent = `${game.speedScale.toFixed(1)}x`;
+    pauseBtn.textContent = game.running ? '⏸ Pause' : '▶ Resume';
+  }
+
+  function pickNextTarget(letter){
+    // Choose the closest-from-bottom word that matches next letter
+    let chosen = null;
+    let bestY = -Infinity;
+    for (const w of game.words){
+      const nextChar = w.text[w.typed || 0];
+      if (!nextChar) continue;
+      if (letter == null || nextChar.toLowerCase() === letter.toLowerCase()){
+        if (w.y > bestY){
+          bestY = w.y; chosen = w;
+        }
+      }
+    }
+    game.targetId = chosen ? chosen.id : null;
+  }
+
+  // --- Input
+  function onKey(e){
+    if (game.over) return;
+    // if (e.key === '' || e.key === 'P'){
+    //   togglePause(); return;
+    // }
+    if (!game.running) return;
+
+    // prevent accidental page scroll on space
+    if (e.key === ' ') e.preventDefault();
+
+    if (e.key === ' '){
+      pickNextTarget(null);
+      return;
+    }
+
+    if (e.key.length !== 1) return; // only characters
+    const letter = e.key;
+    game.totalKeys++;
+
+    // Prefer currently targeted word if it matches
+    let target = game.words.find(w => w.id === game.targetId);
+
+    const matches = (w) => w && w.text[w.typed]?.toLowerCase() === letter.toLowerCase();
+
+    if (!target || !matches(target)){
+      // find a word that matches
+      const candidates = game.words.filter(w => matches(w));
+      if (candidates.length){
+        // pick the lowest one
+        candidates.sort((a,b)=> b.y - a.y);
+        target = candidates[0];
+        game.targetId = target.id;
+      } else {
+        // wrong key
+        game.streak = 0;
+        wiggle();
+        updateHUD();
+        return;
+      }
+    }
+
+    // Correct type
+    target.typed++;
+    game.correctKeys++;
+    // scoring: base + speed bonus + streak
+    const base = 5;
+    const speedBonus = Math.min(10, Math.floor(target.speed/80));
+    const streakBonus = Math.floor(Math.min(20, game.streak/5));
+    game.score += base + speedBonus + streakBonus;
+    game.streak++;
+
+    // If finished word:
+    if (target.typed >= target.text.length){
+      // extra bonus for longer words
+      game.score += Math.min(30, Math.floor(target.text.length*1.2));
+      // splash effect
+      splash(target.x + wordWidth(target.text, target.size)/2, target.y);
+      // remove word
+      game.words = game.words.filter(w => w.id !== target.id);
+      game.targetId = null;
+      pickNextTarget(null);
+    }
+
+    updateHUD();
+  }
+  addEventListener('keydown', onKey);
+
+  // --- Small screen wiggle on error
+  let wiggleTimer=0;
+  function wiggle(){
+    clearTimeout(wiggleTimer);
+    document.body.style.transform = 'translateX(1px)';
+    setTimeout(()=> document.body.style.transform = 'translateX(-1px)', 25);
+    wiggleTimer = setTimeout(()=> document.body.style.transform = '', 60);
+  }
+
+  // --- Visual effects
+  const splashes = [];
+  function splash(x, y){
+    for (let i=0;i<10;i++){
+      splashes.push({
+        x, y,
+        vx: (Math.random()*2-1)*60,
+        vy: (-30 - Math.random()*80),
+        life: .6,
+      });
+    }
+  }
+
+  // --- Drawing helpers
+  function drawCity(){
+    const w = innerWidth, h = innerHeight;
+    // Ground mist
+    const grad = ctx.createLinearGradient(0, h*0.7, 0, h);
+    grad.addColorStop(0,'rgba(59,130,246,0)');
+    grad.addColorStop(1,'rgba(59,130,246,.15)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, h*0.7, w, h*0.3);
+
+    // Far skyline
+    drawBuildings(6, h*0.62, '#0d1326', 0.55);
+    // Mid skyline
+    drawBuildings(9, h*0.70, '#0b1020', 0.75);
+    // Foreground skyline
+    drawBuildings(12, h*0.78, '#0a0e1a', 1.0);
+
+    // Light haze line
+    ctx.fillStyle = 'rgba(99,102,241,.2)';
+    ctx.fillRect(0, h*0.78-1, w, 2);
+  }
+
+  function drawBuildings(count, baseline, color, alpha){
+    const w = innerWidth;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+
+    const seed = count*9973;
+    let x = 0;
+    for (let i=0;i<count;i++){
+      const bw = (w/(count+2)) * (0.6 + Math.random()*0.9);
+      const bh = 60 + Math.random() * (innerHeight*0.25);
+      const gap = 12 + Math.random()*30;
+      const top = baseline - bh;
+      // building
+      ctx.fillRect(x, top, bw, bh);
+      // windows
+      const rows = Math.max(2, Math.floor(bh/28));
+      const cols = Math.max(2, Math.floor(bw/26));
+      for (let r=0;r<rows;r++){
+        for (let c=0;c<cols;c++){
+          if (Math.random() < 0.1) continue; // some windows off
+          const wx = x + 6 + c*( (bw-12)/cols );
+          const wy = top + 6 + r*( (bh-12)/rows );
+          ctx.fillStyle = 'rgba(147,197,253,0.08)';
+          ctx.fillRect(wx, wy, 8, 12);
+          ctx.fillStyle = color;
+        }
+      }
+      x += bw + gap + ((seed+i)%3);
+    }
+    ctx.restore();
+  }
+
+  function drawRainStreaks(dt){
+    ctx.save();
+    for (const r of game.rainStreaks){
+      ctx.globalAlpha = r.alpha;
+      ctx.strokeStyle = 'rgba(125,211,252,1)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(r.x, r.y);
+      ctx.lineTo(r.x+1, r.y + r.len);
+      ctx.stroke();
+
+      r.y += r.speed * dt;
+      r.x += 20 * dt; // slight drift
+      if (r.y > innerHeight){ r.y = -r.len; r.x = Math.random()*innerWidth; }
+      if (r.x > innerWidth){ r.x = Math.random()*innerWidth; }
+    }
+    ctx.restore();
+  }
+
+  function drawWords(dt){
+    for (const w of game.words){
+      w.y += (w.speed * dt);
+
+      // hit ground?
+      if (w.y + w.size*1.2 >= innerHeight*0.78){
+        gameOver();
+        return;
+      }
+
+      // stem (raindrop line)
+      ctx.save();
+      ctx.globalAlpha = .5;
+      ctx.strokeStyle = 'rgba(167,139,250,.55)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(w.x + wordWidth(w.text, w.size)/2, w.y - 10);
+      ctx.lineTo(w.x + wordWidth(w.text, w.size)/2, w.y + 2);
+      ctx.stroke();
+      ctx.restore();
+
+      // text with typed prefix highlight
+      ctx.font = `${w.size}px ui-sans-serif,system-ui,Segoe UI,Roboto,Arial`;
+      const target = (game.targetId === w.id);
+
+      // shadow glow
+      ctx.save();
+      ctx.shadowColor = target ? 'rgba(125,211,252,.6)' : 'rgba(124,58,237,.35)';
+      ctx.shadowBlur = target ? 20 : 10;
+      ctx.fillStyle = 'rgba(203,213,225,.95)';
+      ctx.fillText(w.text, w.x, w.y);
+      ctx.restore();
+
+      // typed prefix overlay
+      if (w.typed > 0){
+        const typedText = w.text.slice(0,w.typed);
+        ctx.save();
+        ctx.fillStyle = 'rgba(34,197,94,1)'; // green
+        ctx.fillText(typedText, w.x, w.y);
+        ctx.restore();
+      }
+
+      // caret underline for next letter
+      if (target){
+        const prefixW = wordWidth(w.text.slice(0,w.typed), w.size);
+        const nextX = w.x + prefixW;
+        ctx.fillStyle = 'rgba(125,211,252,.85)';
+        ctx.fillRect(nextX, w.y+3, Math.max(8, w.size*.5), 2);
+      }
+    }
+  }
+
+  function drawSplashes(dt){
+    for (let i=splashes.length-1; i>=0; i--){
+      const p = splashes[i];
+      p.life -= dt;
+      if (p.life <= 0){ splashes.splice(i,1); continue; }
+      p.vy += 400*dt;
+      p.x += p.vx*dt; p.y += p.vy*dt;
+
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = 'rgba(125,211,252,.9)';
+      ctx.fillRect(p.x, p.y, 2, 2);
+      ctx.restore();
+    }
+  }
+
+  // --- Main loop
+  function loop(ts){
+    if (!game.running) return;
+    const dt = Math.min(0.033, (ts - game.lastTs)/1000); // clamp
+    game.lastTs = ts;
+
+    promoteDifficulty(dt);
+
+    // spawn logic
+    game.lastSpawnAt += dt*1000;
+    if (game.lastSpawnAt >= game.spawnEvery){
+      game.lastSpawnAt = 0;
+      spawnWord();
+    }
+
+    // DRAW
+    ctx.clearRect(0,0,innerWidth,innerHeight);
+    drawCity();
+    drawRainStreaks(dt);
+    drawWords(dt);
+    drawSplashes(dt);
+
+    if (game.running) requestAnimationFrame(loop);
+  }
+
+  // --- Controls
+  function togglePause(){
+    if (game.over) return;
+    game.running = !game.running;
+    updateHUD();
+    if (game.running){
+      game.lastTs = performance.now();
+      requestAnimationFrame(loop);
+    }
+  }
+
+  function restart(){
+    reset();
+    start();
+  }
+
+  playBtn.onclick = start;
+  pauseBtn.onclick = togglePause;
+  restartBtn.onclick = restart;
+  againBtn.onclick = restart;
+  shareBtn.onclick = () => {
+    const text = `I scored ${game.score} points in Typing Rain! 🌧️⌨️ Try to beat me!`;
+    if (navigator.share){
+      navigator.share({ title:'Typing Rain', text, url: location.href }).catch(()=>{});
+    } else {
+      navigator.clipboard.writeText(text).then(()=>{
+        shareBtn.textContent = 'Copied!';
+        setTimeout(()=> shareBtn.textContent = 'Share', 900);
+      });
+    }
+  };
+
+  // Accessibility: focus canvas to capture space without scrolling on some browsers
+  canvas.tabIndex = -1;
+
+  // Kick off with a subtle animated header line (no-op, purely decorative)
+})();
+</script>
+</body>
+</html>

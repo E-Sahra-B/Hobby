@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Custom QR Code Generator</title>
+  <style>
+    :root {
+      --bg: #0b0d10;
+      --card: #151922;
+      --muted: #9aa3b2;
+      --text: #e9eef5;
+      --accent: #5b8cff;
+      --ring: #36415a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      color: var(--text); background: radial-gradient(1200px 800px at 70% -10%, rgba(91,140,255,.18), transparent), var(--bg);
+      min-height: 100vh; display: grid; place-items: center; padding: 24px;
+    }
+    .app {
+      width: min(1100px, 100%); display: grid; gap: 20px;
+      grid-template-columns: 1fr 1.1fr;
+    }
+    @media (max-width: 920px) {
+      .app { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.01));
+      border: 1px solid var(--ring); border-radius: 18px; padding: 18px; backdrop-filter: blur(6px);
+      box-shadow: 0 10px 30px rgba(8, 12, 20, .45), inset 0 1px 0 rgba(255,255,255,.05);
+    }
+    .header { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .title { font-size: clamp(22px, 2.5vw, 28px); font-weight: 800; letter-spacing: .3px; }
+    .subtitle { color: var(--muted); font-size: 14px; margin-top: 4px; }
+
+    .controls { display: grid; gap: 14px; }
+    .label { font-size: 12px; color: var(--muted); margin-bottom: 6px; letter-spacing: .4px; text-transform: uppercase; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .field {
+      display: grid; gap: 6px;
+    }
+    textarea, input[type="text"], input[type="number"] {
+      width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--ring);
+      background: #0f131b; color: var(--text); outline: none; font-size: 14px;
+    }
+    textarea::placeholder { color: #6b7486; }
+    textarea { min-height: 120px; resize: vertical; }
+
+    .swatch {
+      display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--ring); border-radius: 12px; background: #0f131b;
+    }
+    .swatch input[type="color"] {
+      appearance: none; width: 36px; height: 36px; border-radius: 10px; border: none; padding: 0; cursor: pointer;
+      background: transparent;
+    }
+    .btns { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+    .btn {
+      appearance: none; border: 1px solid var(--ring); background: #0f131b; color: var(--text);
+      padding: 10px 14px; border-radius: 12px; cursor: pointer; font-weight: 600; letter-spacing: .2px;
+      transition: transform .06s ease, border-color .2s ease, box-shadow .2s ease;
+    }
+    .btn:hover { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(91,140,255,.12); }
+    .btn:active { transform: translateY(1px); }
+    .btn.primary { background: linear-gradient(180deg, #5b8cff, #4e79ee); border-color: #3e61c7; color: white; }
+
+    .preview {
+      display: grid; place-items: center; overflow: hidden; position: relative; min-height: 520px;
+    }
+    .canvas-wrap { padding: 18px; background: #0f131b; border: 1px solid var(--ring); border-radius: 20px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.03); }
+    .hint { position: absolute; bottom: 2px; color: var(--muted); font-size: 12px; }
+
+    .range { appearance: none; width: 100%; height: 10px; background: #0f131b; border-radius: 999px; border: 1px solid var(--ring); }
+    .range::-webkit-slider-thumb { appearance: none; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px #1b2230; cursor: pointer; }
+    .range::-moz-range-thumb { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); border: none; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+</head>
+<body>
+  <div class="app">
+    <div class="header">
+      <div>
+        <div class="title">Custom QR Code Generator</div>
+        <div class="subtitle">Generate a QR from any text or URL. Pick your colors and download as PNG.</div>
+      </div>
+      <button id="downloadBtn" class="btn primary" aria-label="Download QR as PNG">Download PNG</button>
+    </div>
+
+    <!-- Controls -->
+    <section class="card controls" aria-label="QR settings">
+      <div class="field">
+        <div class="label">Text or URL</div>
+        <textarea id="textInput" placeholder="Type or paste text / URL here...">https://example.com</textarea>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <div class="label">Foreground</div>
+          <div class="swatch">
+            <input id="fg" type="color" value="#000000" aria-label="Foreground color" />
+            <input id="fgHex" type="text" value="#000000" class="mono" aria-label="Foreground hex" />
+          </div>
+        </div>
+        <div class="field">
+          <div class="label">Background</div>
+          <div class="swatch">
+            <input id="bg" type="color" value="#ffffff" aria-label="Background color" />
+            <input id="bgHex" type="text" value="#ffffff" class="mono" aria-label="Background hex" />
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <div class="label">Size (px)</div>
+          <input id="size" type="range" class="range" min="128" max="2048" step="64" value="512" />
+          <div class="subtitle">Current: <span id="sizeVal" class="mono">512</span> px</div>
+        </div>
+        <div class="field">
+          <div class="label">Margin</div>
+          <input id="margin" type="range" class="range" min="0" max="8" step="1" value="2" />
+          <div class="subtitle">Quiet zone: <span id="marginVal" class="mono">2</span> modules</div>
+        </div>
+      </div>
+
+      <div class="btns">
+        <button id="generateBtn" class="btn" aria-label="Generate QR">Generate</button>
+        <button id="clearBtn" class="btn" aria-label="Clear text">Clear</button>
+        <button id="invertBtn" class="btn" aria-label="Invert colors">Invert Colors</button>
+      </div>
+    </section>
+
+    <!-- Preview -->
+    <section class="card preview" aria-live="polite" aria-label="QR preview area">
+      <div class="canvas-wrap">
+        <canvas id="qrCanvas" width="512" height="512" role="img" aria-label="QR code preview"></canvas>
+      </div>
+      <div class="hint">Tip: Higher size = crisper printouts. Use a light background for best scans.</div>
+    </section>
+  </div>
+
+  <script>
+    // --- Elements
+    const textEl = document.getElementById('textInput');
+    const fgEl = document.getElementById('fg');
+    const bgEl = document.getElementById('bg');
+    const fgHexEl = document.getElementById('fgHex');
+    const bgHexEl = document.getElementById('bgHex');
+    const sizeEl = document.getElementById('size');
+    const marginEl = document.getElementById('margin');
+    const sizeValEl = document.getElementById('sizeVal');
+    const marginValEl = document.getElementById('marginVal');
+    const canvas = document.getElementById('qrCanvas');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const generateBtn = document.getElementById('generateBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const invertBtn = document.getElementById('invertBtn');
+
+    // --- Utils
+    const clamp = (n, min, max) => Math.max(min, Math.min(n, max));
+    const isHex = (v) => /^#([\da-f]{3}|[\da-f]{6})$/i.test(v.trim());
+    const toFullHex = (v) => {
+      v = v.trim();
+      if (/^#[\da-f]{3}$/i.test(v)) {
+        return '#' + v.slice(1).split('').map(c => c + c).join('');
+      }
+      return v;
+    };
+
+    // Link color pickers with hex inputs
+    function syncColorInputs(colorEl, hexEl) {
+      colorEl.addEventListener('input', () => { hexEl.value = colorEl.value; render(); });
+      hexEl.addEventListener('input', () => {
+        const v = toFullHex(hexEl.value);
+        if (isHex(v)) { colorEl.value = v; render(); }
+      });
+      hexEl.addEventListener('blur', () => {
+        const v = toFullHex(hexEl.value);
+        if (!isHex(v)) hexEl.value = colorEl.value; else hexEl.value = v;
+      });
+    }
+
+    syncColorInputs(fgEl, fgHexEl);
+    syncColorInputs(bgEl, bgHexEl);
+
+    // Size & margin display
+    sizeEl.addEventListener('input', () => { sizeValEl.textContent = sizeEl.value; render(); });
+    marginEl.addEventListener('input', () => { marginValEl.textContent = marginEl.value; render(); });
+
+    // Text typing live update (debounced)
+    let tId = null;
+    textEl.addEventListener('input', () => {
+      clearTimeout(tId);
+      tId = setTimeout(render, 180);
+    });
+
+    // Buttons
+    generateBtn.addEventListener('click', render);
+    clearBtn.addEventListener('click', () => { textEl.value = ''; render(); });
+    invertBtn.addEventListener('click', () => {
+      const oldFg = fgEl.value; fgEl.value = bgEl.value; bgEl.value = oldFg; fgHexEl.value = fgEl.value; bgHexEl.value = bgEl.value; render();
+    });
+
+    downloadBtn.addEventListener('click', () => {
+      const link = document.createElement('a');
+      const safeName = (textEl.value || 'qr-code').replace(/[^a-z0-9-_]+/gi, '-').slice(0, 40) || 'qr-code';
+      link.download = `${safeName}.png`;
+      link.href = canvas.toDataURL('image/png');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    });
+
+    // Core render
+    function render() {
+      const text = textEl.value.trim() || 'Hello from your Custom QR!';
+      const size = clamp(parseInt(sizeEl.value, 10) || 512, 128, 4096);
+      const margin = clamp(parseInt(marginEl.value, 10) || 2, 0, 16);
+      const colorDark = toFullHex(fgEl.value);
+      const colorLight = toFullHex(bgEl.value);
+
+      canvas.width = canvas.height = size;
+
+      // Use the lightweight QR library to draw onto our canvas.
+      QRCode.toCanvas(canvas, text, {
+        width: size,
+        margin: margin,
+        color: { dark: colorDark, light: colorLight }
+      }, (err) => {
+        if (err) {
+          const ctx = canvas.getContext('2d');
+          ctx.clearRect(0,0,canvas.width, canvas.height);
+          ctx.fillStyle = '#1a1f2b';
+          ctx.fillRect(0,0,canvas.width, canvas.height);
+          ctx.fillStyle = '#ff8080';
+          ctx.font = '16px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto';
+          ctx.fillText('QR render error: ' + err.message, 16, 28);
+        }
+      });
+    }
+
+    // Initial render
+    render();
+  </script>
+</body>
+</html>
