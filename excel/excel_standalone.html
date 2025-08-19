@@ -177,6 +177,7 @@
             <button id="clear-cell-button">Temizle</button>
             <button id="format-currency-button">₺</button>
             <button id="sum-button">Σ</button>
+            <button id="subtract-button">-</button>
             <button id="format-date-button">📅</button>
         </div>
     </div>
@@ -187,6 +188,7 @@
         const colorPicker = document.getElementById("color-picker");
         const colorButton = document.getElementById("color-button");
         const sumButton = document.getElementById("sum-button");
+        const subtractButton = document.getElementById("subtract-button");
         const clearCellButton = document.getElementById("clear-cell-button");
         const formatCurrencyButton = document.getElementById(
             "format-currency-button"
@@ -201,7 +203,8 @@
         let currentCellId = null;
 
         let isSummingMode = false;
-        let sumTargetCell = null;
+        let isSubtractingMode = false;
+        let operationTargetCell = null;
 
         // --- Veri Yönetimi ---
         function getSheetData() {
@@ -219,9 +222,9 @@
                 const cell = document.getElementById(cellId);
                 if (cell) {
                     const data = sheetData[cellId];
-                    cell.textContent = data.formula ?
-                        evaluateFormula(data.formula, cellId) :
-                        data.text || "";
+                    cell.textContent = data.formula
+                        ? evaluateFormula(data.formula, cellId)
+                        : data.text || "";
                     if (data.color) {
                         cell.style.backgroundColor = data.color;
                     }
@@ -234,18 +237,30 @@
             const [start, end] = rangeStr.split(":");
             const startCol = start.match(/[A-Z]+/)[0];
             const startRow = parseInt(start.match(/[0-9]+/)[0]);
-            const endCol = end ? (end.match(/[A-Z]+/) ? end.match(/[A-Z]+/)[0] : startCol) : startCol;
-            const endRow = end ? (end.match(/[0-9]+/) ? parseInt(end.match(/[0-9]+/)[0]) : startRow) : startRow;
+            const endCol = end
+                ? end.match(/[A-Z]+/)
+                    ? end.match(/[A-Z]+/)[0]
+                    : startCol
+                : startCol;
+            const endRow = end
+                ? end.match(/[0-9]+/)
+                    ? parseInt(end.match(/[0-9]+/)[0])
+                    : startRow
+                : startRow;
 
             const startColIndex = startCol.charCodeAt(0) - 65;
             const endColIndex = endCol.charCodeAt(0) - 65;
 
             const cellIds = [];
             for (
-                let c = Math.min(startColIndex, endColIndex); c <= Math.max(startColIndex, endColIndex); c++
+                let c = Math.min(startColIndex, endColIndex);
+                c <= Math.max(startColIndex, endColIndex);
+                c++
             ) {
                 for (
-                    let r = Math.min(startRow, endRow); r <= Math.max(startRow, endRow); r++
+                    let r = Math.min(startRow, endRow);
+                    r <= Math.max(startRow, endRow);
+                    r++
                 ) {
                     cellIds.push(`${String.fromCharCode(65 + c)}${r}`);
                 }
@@ -265,11 +280,11 @@
                 return parseFloat(cleanedValue) || 0;
             }
 
-            return data.value !== undefined ?
-                data.value :
-                typeof data.text === "string" ?
-                parseFloat(data.text.replace(",", ".")) || 0 :
-                0;
+            return data.value !== undefined
+                ? data.value
+                : typeof data.text === "string"
+                    ? parseFloat(data.text.replace(",", ".")) || 0
+                    : 0;
         }
 
         function evaluateFormula(formula, cellId) {
@@ -283,6 +298,7 @@
                 return new Date().toLocaleString("tr-TR");
             }
 
+            // Toplama formülü
             const sumMatch = formula.match(/^=(?:TOPLA|SUM)\(([A-Za-z0-9:]+)\)$/i);
             if (sumMatch) {
                 const range = sumMatch[1];
@@ -307,6 +323,66 @@
                 return result;
             }
 
+            // Çıkarma formülü
+            const subtractMatch = formula.match(
+                /^=(?:ÇIKAR|SUBTRACT)\(([A-Za-z0-9:]+)\)$/i
+            );
+            if (subtractMatch) {
+                const range = subtractMatch[1];
+                const cellIds = parseRange(range);
+
+                if (cellIds.length < 2) {
+                    return "En az 2 hücre gerekli";
+                }
+
+                let result = getCellValue(cellIds[0]);
+                for (let i = 1; i < cellIds.length; i++) {
+                    result -= getCellValue(cellIds[i]);
+                }
+
+                const parts = result.toFixed(2).split(".");
+                const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+                const formattedResult = `${integerPart},${parts[1]}₺`;
+
+                sheetData[cellId] = {
+                    text: formattedResult,
+                    value: result,
+                    formula: formula,
+                    color: sheetData[cellId]?.color || "",
+                };
+                saveSheetData(sheetData);
+
+                return formattedResult;
+            }
+
+            // Normal matematiksel işlemleri destekle (ör: =A1-B1, =a1+b2*2 gibi)
+            if (formula.startsWith("=")) {
+                try {
+                    // Hücre referanslarını sayıya çevir (büyük/küçük harf duyarlılığını kaldır)
+                    let expr = formula.substring(1).replace(/[A-Za-z]+\d+/gi, match => {
+                        // Referansı büyük harfe çevirerek standart hale getir
+                        const cellRef = match.toUpperCase();
+                        return getCellValue(cellRef);
+                    });
+
+                    // Noktaları Türkçe formatı bozmasın diye düzelt
+                    expr = expr.replace(",", ".");
+
+                    const result = eval(expr); // güvenlik açısından sadece bu projede kullanılabilir
+                    if (!isNaN(result)) {
+                        sheetData[cellId] = {
+                            text: result.toString(),
+                            value: result,
+                            formula: formula,
+                            color: sheetData[cellId]?.color || ""
+                        };
+                        saveSheetData(sheetData);
+                        return result;
+                    }
+                } catch (err) {
+                    return "#HATA!";
+                }
+            }
             return formula;
         }
 
@@ -352,8 +428,11 @@
         // Hücre seçimi
         gridContainer.addEventListener("click", (e) => {
             const clickedCell = e.target;
-            if (clickedCell.classList.contains("cell") && !clickedCell.classList.contains("header")) {
-                if (!isSummingMode) {
+            if (
+                clickedCell.classList.contains("cell") &&
+                !clickedCell.classList.contains("header")
+            ) {
+                if (!isSummingMode && !isSubtractingMode) {
                     if (selectedCell) {
                         selectedCell.classList.remove("selected");
                     }
@@ -367,28 +446,35 @@
         // Hücre çoklu seçimi için mousedown, mouseover ve mouseup olayları
         let isMultiSelecting = false;
         let startCell = null;
-        let selectedCellsForSum = new Set();
+        let selectedCellsForOperation = new Set();
 
         gridContainer.addEventListener("mousedown", (e) => {
-            if (e.target.classList.contains("cell") && !e.target.classList.contains("header")) {
-                if (isSummingMode) {
+            if (
+                e.target.classList.contains("cell") &&
+                !e.target.classList.contains("header")
+            ) {
+                if (isSummingMode || isSubtractingMode) {
                     isMultiSelecting = true;
                     startCell = e.target;
                     // Önceki seçimi temizle
-                    document.querySelectorAll(".cell.selected").forEach(cell => {
+                    document.querySelectorAll(".cell.selected").forEach((cell) => {
                         cell.classList.remove("selected");
                     });
-                    selectedCellsForSum.clear();
+                    selectedCellsForOperation.clear();
                     startCell.classList.add("selected");
-                    selectedCellsForSum.add(startCell.id);
+                    selectedCellsForOperation.add(startCell.id);
                     e.preventDefault();
                 }
             }
         });
 
         gridContainer.addEventListener("mouseover", (e) => {
-            if (isMultiSelecting && e.target.classList.contains("cell") && !e.target.classList.contains("header")) {
-                if (isSummingMode) {
+            if (
+                isMultiSelecting &&
+                e.target.classList.contains("cell") &&
+                !e.target.classList.contains("header")
+            ) {
+                if (isSummingMode || isSubtractingMode) {
                     const endCell = e.target;
                     updateSelection(startCell, endCell);
                 }
@@ -407,7 +493,7 @@
             const row = parseInt(cell.id.match(/[0-9]+/)[0]);
             return {
                 col,
-                row
+                row,
             };
         }
 
@@ -420,20 +506,20 @@
             const minRow = Math.min(startCoords.row, endCoords.row);
             const maxRow = Math.max(startCoords.row, endCoords.row);
 
-            document.querySelectorAll(".cell.selected").forEach(cell => {
-                if (cell !== sumTargetCell) {
+            document.querySelectorAll(".cell.selected").forEach((cell) => {
+                if (cell !== operationTargetCell) {
                     cell.classList.remove("selected");
                 }
             });
 
-            selectedCellsForSum.clear();
+            selectedCellsForOperation.clear();
             for (let r = minRow; r <= maxRow; r++) {
                 for (let c = minCol; c <= maxCol; c++) {
                     const cellId = `${String.fromCharCode(65 + c)}${r}`;
                     const cell = document.getElementById(cellId);
                     if (cell) {
                         cell.classList.add("selected");
-                        selectedCellsForSum.add(cell.id);
+                        selectedCellsForOperation.add(cell.id);
                     }
                 }
             }
@@ -501,14 +587,13 @@
         // --- Toplama Fonksiyonu ---
         function handleSumOperation() {
             if (!selectedCell) {
-                //alert("Lütfen toplamın yazılacağı hücreyi seçin.");
                 return false;
             }
 
             if (isSummingMode) {
                 // İkinci tıklama: Toplama işlemini tamamla
                 let sum = 0;
-                selectedCellsForSum.forEach(cellId => {
+                selectedCellsForOperation.forEach((cellId) => {
                     sum += getCellValue(cellId);
                 });
 
@@ -530,18 +615,74 @@
 
                 // Modu sıfırla
                 isSummingMode = false;
-                sumTargetCell.classList.remove("sum-target-cell");
-                sumTargetCell = null;
-                document.querySelectorAll(".cell.selected").forEach(cell => {
+                operationTargetCell.classList.remove("sum-target-cell");
+                operationTargetCell = null;
+                document.querySelectorAll(".cell.selected").forEach((cell) => {
                     cell.classList.remove("selected");
                 });
-
             } else {
                 // İlk tıklama: Toplama modunu başlat
-                //alert("Lütfen toplanacak hücreleri seçin ve tekrar 'Topla' butonuna basın.");
                 isSummingMode = true;
-                sumTargetCell = selectedCell;
-                sumTargetCell.classList.add("sum-target-cell");
+                isSubtractingMode = false; // Çıkarma modunu kapat
+                operationTargetCell = selectedCell;
+                operationTargetCell.classList.add("sum-target-cell");
+
+                // Mevcut seçimi temizle
+                if (selectedCell) {
+                    selectedCell.classList.remove("selected");
+                }
+            }
+        }
+
+        // --- Çıkarma Fonksiyonu ---
+        function handleSubtractOperation() {
+            if (!selectedCell) {
+                return false;
+            }
+
+            if (isSubtractingMode) {
+                // İkinci tıklama: Çıkarma işlemini tamamla
+                const cellIds = Array.from(selectedCellsForOperation);
+
+                if (cellIds.length < 2) {
+                    alert("Çıkarma işlemi için en az 2 hücre seçmelisiniz.");
+                    return;
+                }
+
+                let result = getCellValue(cellIds[0]);
+                for (let i = 1; i < cellIds.length; i++) {
+                    result -= getCellValue(cellIds[i]);
+                }
+
+                // Sonucu hedef hücreye yaz
+                const parts = result.toFixed(2).split(".");
+                const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+                const formattedResult = `${integerPart},${parts[1]}₺`;
+
+                selectedCell.textContent = formattedResult;
+
+                // Veriyi kaydet
+                const sheetData = getSheetData();
+                sheetData[selectedCell.id] = {
+                    text: formattedResult,
+                    value: result,
+                    color: selectedCell.style.backgroundColor || "",
+                };
+                saveSheetData(sheetData);
+
+                // Modu sıfırla
+                isSubtractingMode = false;
+                operationTargetCell.classList.remove("sum-target-cell");
+                operationTargetCell = null;
+                document.querySelectorAll(".cell.selected").forEach((cell) => {
+                    cell.classList.remove("selected");
+                });
+            } else {
+                // İlk tıklama: Çıkarma modunu başlat
+                isSubtractingMode = true;
+                isSummingMode = false; // Toplama modunu kapat
+                operationTargetCell = selectedCell;
+                operationTargetCell.classList.add("sum-target-cell");
 
                 // Mevcut seçimi temizle
                 if (selectedCell) {
@@ -627,6 +768,7 @@
         });
 
         sumButton.addEventListener("click", handleSumOperation);
+        subtractButton.addEventListener("click", handleSubtractOperation);
 
         createGrid();
         loadSheetData();
