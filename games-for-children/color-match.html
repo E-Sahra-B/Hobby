@@ -1,0 +1,696 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Color Match — 30s Game</title>
+    <style>
+        :root {
+            --bg: #0f1724;
+            --card: #0b1220;
+            --text: #e6eef8;
+            --muted: #9fb0cf;
+            --accent: #60a5fa;
+            --glass: rgba(255, 255, 255, 0.03);
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+        }
+
+        * {
+            box-sizing: border-box
+        }
+
+        html,
+        body {
+            height: 100%
+        }
+
+        body {
+            margin: 0;
+            background: linear-gradient(180deg, var(--bg), #071027 120%);
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        .app {
+            width: 100%;
+            max-width: 920px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01));
+            border-radius: 16px;
+            padding: 28px;
+            box-shadow: 0 8px 30px rgba(2, 6, 23, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        header {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 20px;
+            letter-spacing: 0.6px;
+            color: var(--text);
+        }
+
+        .controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .stat {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 4px;
+        }
+
+        .stat .label {
+            font-size: 12px;
+            color: var(--muted)
+        }
+
+        .stat .value {
+            font-weight: 700;
+            font-size: 16px
+        }
+
+        .stage {
+            display: grid;
+            grid-template-columns: 1fr 320px;
+            gap: 24px;
+            align-items: start;
+        }
+
+        /* big play area */
+        .play-area {
+            padding: 26px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.01), rgba(255, 255, 255, 0.02));
+            border-radius: 12px;
+            min-height: 260px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 18px;
+            border: 1px solid rgba(255, 255, 255, 0.02);
+        }
+
+        .word {
+            font-size: 84px;
+            font-weight: 800;
+            letter-spacing: 6px;
+            transform-origin: center;
+            transition: transform 160ms ease, opacity 160ms ease;
+            user-select: none;
+        }
+
+        .sub {
+            font-size: 14px;
+            color: var(--muted);
+        }
+
+        /* right panel */
+        .panel {
+            padding: 18px;
+            background: var(--glass);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            align-items: stretch;
+            justify-content: flex-start;
+            min-height: 260px;
+        }
+
+        .timer {
+            font-size: 28px;
+            font-weight: 800;
+            text-align: center;
+            padding: 10px 6px;
+            border-radius: 8px;
+            background: linear-gradient(90deg, rgba(255, 255, 255, 0.015), rgba(255, 255, 255, 0.01));
+            border: 1px solid rgba(255, 255, 255, 0.02);
+        }
+
+        .bar-wrap {
+            height: 10px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+
+        .bar {
+            height: 100%;
+            width: 100%;
+            transition: width 250ms linear;
+            transform-origin: left;
+        }
+
+        .big-score {
+            font-size: 40px;
+            font-weight: 900;
+            text-align: center;
+        }
+
+        .btn {
+            appearance: none;
+            border: 0;
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-weight: 700;
+            cursor: pointer;
+            user-select: none;
+            transition: transform 140ms cubic-bezier(.2, .9, .3, 1), box-shadow 140ms;
+            box-shadow: 0 6px 20px rgba(2, 6, 23, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(3px) scale(0.99);
+            box-shadow: 0 4px 14px rgba(2, 6, 23, 0.35);
+        }
+
+        .start {
+            background: linear-gradient(90deg, #34d399, #10b981);
+            color: #042014;
+            padding: 10px 18px;
+            border-radius: 10px;
+            min-width: 110px;
+        }
+
+        .restart {
+            background: linear-gradient(90deg, #60a5fa, #3b82f6);
+            color: white;
+            min-width: 110px;
+        }
+
+        .buttons-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-top: 8px;
+        }
+
+        .color-btn {
+            height: 72px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            font-weight: 800;
+            font-size: 18px;
+            color: white;
+            text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+            cursor: pointer;
+            user-select: none;
+            border: 3px solid rgba(255, 255, 255, 0.04);
+            transition: transform 140ms cubic-bezier(.2, .9, .3, 1), box-shadow 140ms, filter 160ms;
+            box-shadow: 0 10px 24px rgba(2, 6, 23, 0.55);
+        }
+
+        .color-btn:active {
+            transform: translateY(6px) scale(0.98);
+            box-shadow: 0 6px 12px rgba(2, 6, 23, 0.4);
+            filter: brightness(0.9);
+        }
+
+        /* color mapping (use background colors that pop) */
+        .c-RED {
+            background: #F30101;
+        }
+
+        .c-GREEN {
+            background: #009400;
+        }
+
+        .c-BLUE {
+            background: #0000F7;
+        }
+
+        .c-YELLOW {
+            background: #FFF002;
+            color: #1b1b1b;
+            text-shadow: none;
+        }
+
+        .c-PURPLE {
+            background: #7C007C;
+        }
+
+        .c-ORANGE {
+            background: #F66204;
+            color: #1b1b1b;
+            text-shadow: none;
+        }
+
+        .c-BLACK {
+            background: #000000;
+        }
+
+        .c-TEAL {
+            background: #007C7C;
+        }
+
+        .c-BROWN {
+            background: #3B1E13;
+        }
+
+        .c-PINK {
+            background: #F71490;
+        }
+
+        /* flash effect for correct/wrong */
+        .flash-correct {
+            animation: correctFlash 420ms ease;
+        }
+
+        .flash-wrong {
+            animation: wrongFlash 420ms ease;
+        }
+
+        @keyframes correctFlash {
+            0% {
+                box-shadow: 0 10px 30px rgba(16, 185, 129, 0.0);
+                transform: scale(1)
+            }
+
+            40% {
+                box-shadow: 0 18px 50px rgba(16, 185, 129, 0.25);
+                transform: scale(1.03)
+            }
+
+            100% {
+                box-shadow: 0 10px 30px rgba(16, 185, 129, 0.0);
+                transform: scale(1)
+            }
+        }
+
+        @keyframes wrongFlash {
+            0% {
+                box-shadow: 0 10px 30px rgba(239, 68, 68, 0.0);
+                transform: scale(1)
+            }
+
+            40% {
+                box-shadow: 0 18px 50px rgba(239, 68, 68, 0.22);
+                transform: scale(0.98) rotate(-1deg)
+            }
+
+            100% {
+                box-shadow: 0 10px 30px rgba(239, 68, 68, 0.0);
+                transform: scale(1) rotate(0)
+            }
+        }
+
+        .foot {
+            margin-top: 18px;
+            display: flex;
+            justify-content: space-between;
+            color: var(--muted);
+            font-size: 13px;
+            align-items: center;
+        }
+
+        /* responsive */
+        @media (max-width:880px) {
+            .stage {
+                grid-template-columns: 1fr;
+            }
+
+            .panel {
+                order: 2
+            }
+
+            .play-area {
+                order: 1
+            }
+
+            .word {
+                font-size: 64px
+            }
+
+            .color-btn {
+                height: 64px
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app" role="application" aria-label="Color Match game">
+        <header>
+            <h1>Color Match — Click the color (not the word)</h1>
+            <div class="controls">
+                <div class="stat">
+                    <div class="label">Time left</div>
+                    <div id="time" class="value">30s</div>
+                </div>
+                <div class="stat">
+                    <div class="label">Score</div>
+                    <div id="score" class="value">0</div>
+                </div>
+            </div>
+        </header>
+
+        <main class="stage">
+            <section class="play-area" aria-live="polite">
+                <div class="sub">Tap the button that matches the <strong>color of the word</strong>, not the word
+                    itself.</div>
+                <div id="word" class="word" aria-hidden="false">READY</div>
+                <div id="feedback" class="sub" aria-hidden="true"></div>
+                <div class="buttons-grid" style="width:100%;max-width:540px">
+                    <!-- Buttons inserted by JS -->
+                </div>
+            </section>
+
+            <aside class="panel" aria-hidden="false">
+                <div class="timer" id="timer-display" aria-live="polite">30.0s</div>
+                <div class="bar-wrap" aria-hidden="true">
+                    <div id="time-bar" class="bar" style="background:linear-gradient(90deg,#34d399,#60a5fa);width:100%">
+                    </div>
+                </div>
+
+                <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;">
+                    <div style="flex:1">
+                        <div class="big-score" id="big-score">0</div>
+                        <div style="font-size:13px;color:var(--muted)">Best: <span id="best">0</span></div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:8px;">
+                        <button id="startBtn" class="btn start">Start</button>
+                        <button id="restartBtn" class="btn restart" disabled>Restart</button>
+                    </div>
+                </div>
+
+                <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:8px">
+                    <div style="font-size:13px;color:var(--muted)">Speed: <strong id="speedLabel">Normal</strong></div>
+                    <div>
+                        <label style="font-size:13px;color:var(--muted)"><input id="soundToggle" type="checkbox" />
+                            Sound</label>
+                    </div>
+                </div>
+
+                <div class="foot">
+                    <div>30 seconds — stay fast!</div>
+                    <div>Made with ❤️</div>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <script>
+        (() => {
+            // Colors available (keys match text shown)
+            const COLORS = [
+                { key: "RED", hex: "#F30101" },
+                { key: "GREEN", hex: "#009400" },
+                { key: "BLUE", hex: "#0000F7" },
+                { key: "YELLOW", hex: "#FFF002" },
+                { key: "PURPLE", hex: "#7C007C" },
+                { key: "ORANGE", hex: "#F66204" },
+                { key: "BLACK", hex: "#000000" },
+                { key: "TEAL", hex: "#007C7C" },
+                { key: "PINK", hex: "#F71490" },
+                { key: "BROWN", hex: "#3B1E13" }
+            ];
+
+            const wordEl = document.getElementById('word');
+            const feedbackEl = document.getElementById('feedback');
+            const timeEl = document.getElementById('time');
+            const scoreEl = document.getElementById('score');
+            const bigScoreEl = document.getElementById('big-score');
+            const bestEl = document.getElementById('best');
+            const timerDisplay = document.getElementById('timer-display');
+            const timeBar = document.getElementById('time-bar');
+            const startBtn = document.getElementById('startBtn');
+            const restartBtn = document.getElementById('restartBtn');
+            const soundToggle = document.getElementById('soundToggle');
+            const speedLabel = document.getElementById('speedLabel');
+
+            const btnGrid = document.querySelector('.buttons-grid');
+
+            let timeLeft = 30.0;
+            let timer = null;
+            let running = false;
+            let score = 0;
+            let best = parseInt(localStorage.getItem('color-match-best') || '0', 10);
+            bestEl.textContent = best;
+            let currentColor = null; // hex of current font color
+            let currentColorKey = null; // key name
+
+            // create buttons
+            function createButtons() {
+                btnGrid.innerHTML = '';
+                // choose a subset (we'll include all to keep things simple)
+                COLORS.forEach(c => {
+                    const b = document.createElement('button');
+                    b.className = `color-btn c-${c.key}`;
+                    b.type = 'button';
+                    b.dataset.key = c.key;
+                    b.dataset.hex = c.hex;
+                    b.innerText = c.key;
+                    b.setAttribute('aria-label', c.key + ' color button');
+                    b.addEventListener('click', onColorClick);
+                    btnGrid.appendChild(b);
+                });
+            }
+
+            // pick new word and color
+            function nextRound(animate = true) {
+                // pick random word text (the label) and random color for font
+                const wordObj = randomFrom(COLORS);
+                const colorObj = randomFrom(COLORS);
+                // allow the word text and font color to coincide sometimes (random)
+                // Update displayed word and color
+                wordEl.textContent = wordObj.key;
+                wordEl.style.color = colorObj.hex;
+                currentColor = colorObj.hex;
+                currentColorKey = colorObj.key;
+                feedbackEl.textContent = '';
+                if (animate) {
+                    wordEl.style.transform = 'scale(1.06)';
+                    wordEl.style.opacity = '0.92';
+                    setTimeout(() => {
+                        wordEl.style.transform = '';
+                        wordEl.style.opacity = '';
+                    }, 140);
+                }
+            }
+
+            // helpers
+            function randomFrom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+            function onColorClick(e) {
+                if (!running) return;
+                const btn = e.currentTarget;
+                const pickedKey = btn.dataset.key;
+                // correct if pickedKey equals currentColorKey
+                const isCorrect = pickedKey === currentColorKey;
+                if (isCorrect) {
+                    incrementScore();
+                    flash(btn, 'correct');
+                    playTone(880, 0.06);
+                    feedbackEl.textContent = '+1';
+                    feedbackEl.style.color = '#34d399';
+                } else {
+                    flash(btn, 'wrong');
+                    playTone(240, 0.09);
+                    feedbackEl.textContent = '✕';
+                    feedbackEl.style.color = '#ef4444';
+                }
+                // short delay then next round
+                setTimeout(() => nextRound(true), 120);
+            }
+
+            function flash(el, kind) {
+                if (kind === 'correct') {
+                    el.classList.add('flash-correct');
+                    setTimeout(() => el.classList.remove('flash-correct'), 420);
+                } else {
+                    el.classList.add('flash-wrong');
+                    setTimeout(() => el.classList.remove('flash-wrong'), 420);
+                }
+            }
+
+            function incrementScore() {
+                score += 1;
+                scoreEl.textContent = score;
+                bigScoreEl.textContent = score;
+                if (score > best) {
+                    best = score;
+                    bestEl.textContent = best;
+                    localStorage.setItem('color-match-best', String(best));
+                }
+            }
+
+            // timer logic (uses 100ms ticks for smoother UI)
+            function startTimer() {
+                if (timer) clearInterval(timer);
+                const start = performance.now();
+                const duration = timeLeft; // seconds remaining
+                const targetEnd = performance.now() + duration * 1000;
+                timer = setInterval(() => {
+                    const now = performance.now();
+                    const remMs = Math.max(0, targetEnd - now);
+                    timeLeft = remMs / 1000;
+                    updateTimerUI();
+                    if (timeLeft <= 0.0001) {
+                        stopGame();
+                    }
+                }, 80);
+            }
+
+            function updateTimerUI() {
+                timerDisplay.textContent = timeLeft.toFixed(1) + 's';
+                timeEl.textContent = Math.ceil(timeLeft) + 's';
+                const percent = Math.max(0, (timeLeft / 30) * 100);
+                timeBar.style.width = percent + '%';
+                // change bar gradient near end
+                if (timeLeft <= 6) {
+                    timeBar.style.background = 'linear-gradient(90deg,#ef4444,#fb923c)';
+                } else {
+                    timeBar.style.background = 'linear-gradient(90deg,#34d399,#60a5fa)';
+                }
+            }
+
+            function startGame() {
+                // reset
+                timeLeft = 30.0;
+                score = 0;
+                scoreEl.textContent = '0';
+                bigScoreEl.textContent = '0';
+                running = true;
+                startBtn.disabled = true;
+                restartBtn.disabled = false;
+                playBtnPower(true);
+                updateSpeedLabel();
+                nextRound(false);
+                setTimeout(() => nextRound(true), 80);
+                startTimer();
+                // focus first button for keyboard users
+                const firstBtn = btnGrid.querySelector('button');
+                if (firstBtn) firstBtn.focus();
+            }
+
+            function stopGame() {
+                running = false;
+                if (timer) { clearInterval(timer); timer = null; }
+                playBtnPower(false);
+                startBtn.disabled = false;
+                restartBtn.disabled = false;
+                wordEl.style.transform = 'scale(0.98)';
+                wordEl.style.opacity = '0.85';
+                feedbackEl.textContent = 'Time up! Final score: ' + score;
+                feedbackEl.style.color = '#9fb0cf';
+                playTone(420, 0.18);
+            }
+
+            function restartGame() {
+                if (timer) clearInterval(timer);
+                timeLeft = 30.0;
+                score = 0;
+                scoreEl.textContent = '0';
+                bigScoreEl.textContent = '0';
+                feedbackEl.textContent = '';
+                nextRound(false);
+                updateTimerUI();
+            }
+
+            // toggle button disabled state visually
+            function playBtnPower(on) {
+                const buttons = document.querySelectorAll('.color-btn');
+                buttons.forEach(b => b.disabled = !on);
+                // change pointer events
+                btnGrid.style.opacity = on ? '1' : '0.92';
+            }
+
+            // simple tone generator (WebAudio)
+            let audioCtx = null;
+            function ensureAudio() {
+                if (audioCtx) return;
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            function playTone(frequency = 440, duration = 0.08) {
+                if (!soundToggle.checked) return;
+                ensureAudio();
+                try {
+                    const ctx = audioCtx;
+                    const o = ctx.createOscillator();
+                    const g = ctx.createGain();
+                    o.type = 'sine';
+                    o.frequency.value = frequency;
+                    g.gain.value = 0.05;
+                    o.connect(g);
+                    g.connect(ctx.destination);
+                    o.start();
+                    const now = ctx.currentTime;
+                    g.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+                    o.stop(now + duration + 0.02);
+                } catch (e) {
+                    // ignore audio errors
+                    console.warn(e);
+                }
+            }
+
+            // keyboard support: number keys / first letters
+            function onKey(e) {
+                if (!running) return;
+                const key = e.key.toLowerCase();
+                // map first letters or digits (1..9) to available buttons in order
+                const btns = Array.from(document.querySelectorAll('.color-btn'));
+                // try digits
+                if (/^[1-9]$/.test(key)) {
+                    const idx = parseInt(key, 10) - 1;
+                    if (btns[idx]) btns[idx].click();
+                    return;
+                }
+                // try letter match with first char of color name
+                for (const b of btns) {
+                    if (b.dataset.key[0].toLowerCase() === key) {
+                        b.click();
+                        return;
+                    }
+                }
+            }
+
+            // speed label (not used to change mechanics now, but kept for UI)
+            function updateSpeedLabel() {
+                speedLabel.textContent = 'Normal';
+            }
+
+            // init
+            createButtons();
+            playBtnPower(false);
+            updateTimerUI();
+
+            // events
+            startBtn.addEventListener('click', () => { startGame(); });
+            restartBtn.addEventListener('click', () => { restartGame(); });
+            document.addEventListener('keydown', onKey);
+
+            // initial word shuffle
+            wordEl.textContent = 'READY';
+            wordEl.style.color = '#60a5fa';
+
+            // accessibility: announce when best updated
+            const obs = new MutationObserver(() => {
+                // noop now
+            });
+
+            // small helper to seed a different first color each load
+            (function seedFirst() {
+                nextRound(false);
+            })();
+
+        })();
+    </script>
+</body>
+
+</html>

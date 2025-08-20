@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Falling Fruits</title>
+  <style>
+    :root{
+      --bg1:#a0e9ff; /* sky */
+      --bg2:#f7f3ff; /* soft */
+      --accent:#ff77aa; /* pink */
+      --accent2:#ffd166; /* yellow */
+      --accent3:#7bd389; /* green */
+      --accent4:#7aa2ff; /* blue */
+      --ink:#2b2b2b;
+    }
+    html,body{height:100%;margin:0}
+    body{background:linear-gradient(180deg,var(--bg1),var(--bg2));font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif;color:var(--ink);}
+    .wrap{position:relative;display:grid;place-items:center;height:100%;overflow:hidden}
+    canvas{display:block;max-width:100vw;max-height:100vh;box-shadow:0 10px 40px rgba(0,0,0,.1);border-radius:24px;background:linear-gradient(180deg,#eaffff,#ffffff)}
+
+    /* HUD */
+    .hud{position:absolute;inset:0;pointer-events:none}
+    .pill{position:absolute;left:16px;top:16px;background:rgba(255,255,255,.8);backdrop-filter:blur(6px);padding:10px 14px;border-radius:999px;font-weight:700;display:flex;gap:14px;align-items:center;box-shadow:0 6px 20px rgba(0,0,0,.08)}
+    .score{font-size:18px}
+    .lives{display:flex;gap:6px}
+    .heart{width:18px;height:18px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.15))}
+
+    /* Center overlays */
+    .center{position:absolute;inset:0;display:grid;place-items:center}
+    .panel{background:rgba(255,255,255,.95);border-radius:20px;padding:22px 20px;box-shadow:0 16px 60px rgba(0,0,0,.18);text-align:center;min-width:260px}
+    .title{font-size:28px;margin:0 0 6px;font-weight:900;color:#ff6f91}
+    .subtitle{margin:0 0 16px;font-size:14px;opacity:.8}
+    .row{display:flex;gap:10px;justify-content:center;align-items:center}
+    .btn{appearance:none;border:none;cursor:pointer;padding:12px 18px;border-radius:14px;font-weight:800;font-size:16px;transition:transform .08s ease,box-shadow .2s ease}
+    .btn:active{transform:translateY(1px)}
+    .btn.primary{background:linear-gradient(135deg,#ff8fab,#ffb3c6);box-shadow:0 6px 18px rgba(255,143,171,.5);color:#572a3f}
+    .btn.secondary{background:linear-gradient(135deg,#8ec5ff,#b8d8ff);box-shadow:0 6px 18px rgba(142,197,255,.45);color:#0d2a57}
+
+    .hint{margin-top:10px;font-size:12px;opacity:.7}
+
+    /* Cute floating bubbles */
+    .bubble{position:absolute;border-radius:50%;opacity:.25;filter:blur(1px)}
+    .bubble.b1{background:var(--accent);width:120px;height:120px;left:-30px;top:10%}
+    .bubble.b2{background:var(--accent2);width:160px;height:160px;right:-40px;top:30%}
+    .bubble.b3{background:var(--accent3);width:140px;height:140px;left:10%;bottom:-40px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <canvas id="game" width="960" height="540" aria-label="Falling Fruits game"></canvas>
+
+    <!-- HUD -->
+    <div class="hud" aria-hidden="true">
+      <div class="pill">
+        <div class="score" id="score">Score: 0</div>
+        <div class="lives" id="lives" title="Misses left">
+          <!-- hearts injected here -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Start Overlay -->
+    <div class="center" id="start">
+      <div class="panel">
+        <h1 class="title">Falling Fruits</h1>
+        <p class="subtitle">Catch the yummy fruits with your basket. Miss 3 and the game ends!</p>
+        <div class="row">
+          <button class="btn primary" id="play">Start Game</button>
+          <button class="btn secondary" id="how">How to Play</button>
+        </div>
+        <div class="hint">Controls: Arrow keys ◀ ▶ or move your mouse/touch</div>
+      </div>
+    </div>
+
+    <!-- Game Over Overlay -->
+    <div class="center" id="over" style="display:none">
+      <div class="panel">
+        <h2 class="title" style="font-size:26px">Game Over</h2>
+        <p class="subtitle" id="final">Your score: 0</p>
+        <div class="row">
+          <button class="btn primary" id="retry">Play Again</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ambient bubbles -->
+    <div class="bubble b1"></div>
+    <div class="bubble b2"></div>
+    <div class="bubble b3"></div>
+  </div>
+
+<script>
+(() => {
+  const c = document.getElementById('game');
+  const ctx = c.getContext('2d');
+  const startUI = document.getElementById('start');
+  const overUI = document.getElementById('over');
+  const btnPlay = document.getElementById('play');
+  const btnHow = document.getElementById('how');
+  const btnRetry = document.getElementById('retry');
+  const scoreEl = document.getElementById('score');
+  const livesEl = document.getElementById('lives');
+  const finalEl = document.getElementById('final');
+
+  // Responsive canvas
+  function fitCanvas(){
+    const pad = 24; // keep rounded corners visible
+    const w = window.innerWidth - pad*2;
+    const h = window.innerHeight - pad*2;
+    const targetRatio = c.width / c.height; // 16:9
+    let outW = w, outH = w/targetRatio;
+    if(outH > h){ outH = h; outW = h*targetRatio; }
+    c.style.width = outW + 'px';
+    c.style.height = outH + 'px';
+  }
+  window.addEventListener('resize', fitCanvas); fitCanvas();
+
+  // Simple sound effects (WebAudio beeps)
+  const audioCtx = typeof AudioContext !== 'undefined' ? new AudioContext() : null;
+  function beep(freq=600, dur=0.08, type='sine', vol=0.05){
+    if(!audioCtx) return; const o = audioCtx.createOscillator(); const g = audioCtx.createGain();
+    o.type = type; o.frequency.value = freq; g.gain.value = vol; o.connect(g); g.connect(audioCtx.destination);
+    o.start(); setTimeout(()=>{o.stop();}, dur*1000);
+  }
+
+  // Game state
+  const W = c.width, H = c.height;
+  const BASKET = { x: W/2, y: H-40, w: 140, h: 28, speed: 650 };
+  const MAX_MISSES = 3;
+  let fruits = []; // {x,y,vx,vy,r,type,spin,a}
+  let score = 0; let misses = 0; let running = false; let lastTime = 0; let spawnTimer = 0; let spawnGap = 900; // ms
+  let speedScale = 1; // increases gradually
+  let keys = {left:false,right:false};
+
+  const FRUITS = [
+    {name:'apple', color:'#ff6b6b', leaf:'#2ecc71'},
+    {name:'banana', color:'#ffd166', leaf:'#ffe18c'},
+    {name:'grape', color:'#7b61ff', leaf:'#9aa7ff'},
+    {name:'orange', color:'#ff9f1c', leaf:'#ffe6a7'},
+    {name:'watermelon', color:'#ff4d6d', leaf:'#2dd36f'}
+  ];
+
+  function drawBasket(){
+    const {x,y,w,h} = BASKET;
+    // Basket base
+    const grd = ctx.createLinearGradient(x-w/2,y-h,x+w/2,y+h);
+    grd.addColorStop(0,'#c47f3b'); grd.addColorStop(1,'#e6a564');
+    ctx.fillStyle = grd; roundRect(x-w/2,y-h,w,h,12,true,false);
+    // Stripes
+    ctx.strokeStyle = 'rgba(0,0,0,.15)'; ctx.lineWidth = 3;
+    for(let i=0;i<5;i++){ ctx.beginPath(); ctx.moveTo(x-w/2+10+i*(w-20)/4,y-h+6); ctx.lineTo(x-w/2+10+i*(w-20)/4,y-6); ctx.stroke(); }
+  }
+
+  function drawFruit(f){
+    ctx.save(); ctx.translate(f.x,f.y); ctx.rotate(f.a||0);
+    if(f.type.name==='banana'){
+      // big friendly banana arc
+      ctx.beginPath(); ctx.lineWidth = f.r*0.9; ctx.strokeStyle = f.type.color;
+      ctx.lineCap = 'round'; ctx.arc(0,0,f.r*0.8,Math.PI*0.2,Math.PI*0.95,false); ctx.stroke();
+      // highlight
+      ctx.beginPath(); ctx.lineWidth = f.r*0.35; ctx.strokeStyle = 'rgba(255,255,255,.35)';
+      ctx.arc(0,-f.r*0.1,f.r*0.8,Math.PI*0.25,Math.PI*0.9,false); ctx.stroke();
+    } else if(f.type.name==='watermelon'){
+      // half-slice
+      ctx.fillStyle = f.type.color; roundArc(0,0,f.r,Math.PI,0,true);
+      ctx.fillStyle = '#2dd36f'; roundArc(0,0,f.r*1.05,Math.PI,0,false);
+      // seeds
+      ctx.fillStyle = '#2b2b2b';
+      for(let i=0;i<6;i++){ ctx.beginPath(); const ang = Math.PI*(i+1)/7; ctx.ellipse(Math.cos(ang)*f.r*0.55,-Math.sin(ang)*f.r*0.5,f.r*0.07,f.r*0.14,0,0,Math.PI*2); ctx.fill(); }
+    } else if(f.type.name==='grape'){
+      for(let i=0;i<7;i++){ ctx.beginPath(); const ang = i/7*Math.PI*2; const rx=Math.cos(ang)*f.r*0.35, ry=Math.sin(ang)*f.r*0.28; ctx.fillStyle=f.type.color; ctx.arc(rx,ry,f.r*0.25,0,Math.PI*2); ctx.fill(); }
+      // leaf
+      ctx.fillStyle = f.type.leaf; ctx.beginPath(); ctx.arc(-f.r*0.2,-f.r*0.7,f.r*0.18,0,Math.PI*2); ctx.fill();
+    } else {
+      // apple / orange
+      ctx.beginPath(); ctx.fillStyle=f.type.color; ctx.arc(0,0,f.r,0,Math.PI*2); ctx.fill();
+      // shine
+      ctx.beginPath(); ctx.fillStyle='rgba(255,255,255,.35)'; ctx.ellipse(-f.r*0.25,-f.r*0.25,f.r*0.22,f.r*0.12,Math.PI/6,0,Math.PI*2); ctx.fill();
+      // leaf
+      ctx.fillStyle=f.type.leaf; ctx.beginPath(); ctx.ellipse(f.r*0.35,-f.r*0.6,f.r*0.12,f.r*0.2,Math.PI/6,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function roundRect(x,y,w,h,r,fill,stroke){
+    const rr = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x+rr, y);
+    ctx.arcTo(x+w, y, x+w, y+h, rr);
+    ctx.arcTo(x+w, y+h, x, y+h, rr);
+    ctx.arcTo(x, y+h, x, y, rr);
+    ctx.arcTo(x, y, x+w, y, rr);
+    if(fill) ctx.fill(); if(stroke) ctx.stroke();
+  }
+  function roundArc(x,y,r,sa,ea,fill){
+    ctx.beginPath(); ctx.moveTo(x,y); ctx.arc(x,y,r,sa,ea); ctx.closePath(); if(fill) ctx.fill(); else ctx.stroke();
+  }
+
+  function spawnFruit(){
+    const type = FRUITS[(Math.random()*FRUITS.length)|0];
+    const r = 28 + Math.random()*22; // large for kids (≈ 56–100px)
+    const x = r + Math.random()*(W - r*2);
+    const y = -r - 10;
+    const vy = 180 + Math.random()*80; // base fall speed
+    const vx = (Math.random()*80 - 40);
+    fruits.push({x,y,vx,vy,r,type,spin:(Math.random()*0.8-0.4),a:0});
+  }
+
+  function reset(){
+    fruits.length = 0; score = 0; misses = 0; spawnTimer = 0; spawnGap = 900; speedScale = 1; lastTime=0;
+    updateHUD();
+  }
+
+  function start(){
+    if(audioCtx && audioCtx.state === 'suspended'){ audioCtx.resume(); }
+    reset(); running = true; startUI.style.display='none'; overUI.style.display='none';
+    requestAnimationFrame(loop);
+  }
+
+  function gameOver(){
+    running = false; finalEl.textContent = `Your score: ${score}`; overUI.style.display='grid';
+  }
+
+  function updateHUD(){
+    scoreEl.textContent = `Score: ${score}`;
+    // hearts
+    livesEl.innerHTML = '';
+    for(let i=0;i<MAX_MISSES;i++){
+      const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+      svg.setAttribute('viewBox','0 0 24 24'); svg.classList.add('heart');
+      const p = document.createElementNS('http://www.w3.org/2000/svg','path');
+      p.setAttribute('d','M12 21s-6.7-4.35-9.33-7.13C-0.4 10.7 1.3 6.2 5 6.2c2.2 0 3.5 1.3 4 2.1.5-.8 1.8-2.1 4-2.1 3.7 0 5.4 4.5 2.3 7.67C18.7 16.65 12 21 12 21z');
+      p.setAttribute('fill', i < MAX_MISSES - misses ? '#ff6f91' : '#ffd1df');
+      svg.appendChild(p); livesEl.appendChild(svg);
+    }
+  }
+
+  function loop(t){
+    if(!running) return;
+    if(!lastTime) lastTime = t; const dt = Math.min(40, t - lastTime) / 1000; lastTime = t;
+
+    // Progressively faster & more frequent spawns
+    spawnTimer += t ? t - (t - dt*1000) : 0; // accumulate roughly by frame time
+    if(spawnTimer >= spawnGap){ spawnTimer = 0; spawnFruit(); if(spawnGap > 350) spawnGap -= 12; speedScale = Math.min(2.2, speedScale + 0.005); }
+
+    update(dt);
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  function update(dt){
+    // Input -> basket position
+    const move = (keys.left?-1:0) + (keys.right?1:0);
+    BASKET.x += move * BASKET.speed * dt;
+    BASKET.x = Math.max(BASKET.w/2, Math.min(W - BASKET.w/2, BASKET.x));
+
+    // Fruits physics
+    for(const f of fruits){
+      f.vy += 30 * dt; // tiny gravity accel
+      f.x += f.vx * dt;
+      f.y += f.vy * dt * speedScale;
+      f.a += f.spin * dt;
+      if(f.x < f.r || f.x > W - f.r) f.vx *= -1; // bounce walls
+    }
+
+    // Collisions with basket
+    const by = BASKET.y, half = BASKET.w/2;
+    for(let i=fruits.length-1;i>=0;i--){
+      const f = fruits[i];
+      if(f.y + f.r >= by - 2 && f.y + f.r <= by + 8){
+        const dx = Math.abs(f.x - BASKET.x);
+        if(dx <= half + f.r*0.75){
+          // Caught!
+          fruits.splice(i,1); score += 1; updateHUD(); beep(900,0.06,'triangle',0.06);
+          // tiny bounce effect
+          BASKET.bump = 1;
+          continue;
+        }
+      }
+      // Missed
+      if(f.y - f.r > H){
+        fruits.splice(i,1); misses += 1; updateHUD(); beep(220,0.09,'sawtooth',0.05);
+        if(misses >= MAX_MISSES){ gameOver(); }
+      }
+    }
+  }
+
+  function render(){
+    // background with distant clouds
+    ctx.clearRect(0,0,W,H);
+    drawSky();
+
+    // fruits
+    for(const f of fruits) drawFruit(f);
+
+    // basket
+    drawBasket();
+
+    // basket bump animation
+    if(BASKET.bump){
+      BASKET.bump += 0.2; if(BASKET.bump>4) BASKET.bump=0;
+    }
+  }
+
+  function drawSky(){
+    // grassy ground
+    const grd = ctx.createLinearGradient(0,H-120,0,H);
+    grd.addColorStop(0,'#b2f7b7'); grd.addColorStop(1,'#7bd389');
+    ctx.fillStyle = grd; ctx.fillRect(0,H-120,W,140);
+    // fence
+    ctx.fillStyle = '#f6d365';
+    for(let x=0;x<W;x+=40){ ctx.fillRect(x,H-140,20,60); }
+    ctx.fillStyle = '#f9e2ae'; ctx.fillRect(0,H-140,W,10);
+
+    // clouds
+    function cloud(x,y,s){ ctx.globalAlpha=0.8; ctx.fillStyle='#ffffff';
+      ctx.beginPath(); ctx.arc(x,y,s,0,Math.PI*2); ctx.arc(x+s*0.9,y,s*0.8,0,Math.PI*2); ctx.arc(x-s*0.9,y+4,s*0.7,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1; }
+    const t = performance.now()/1000;
+    const cx = (t*15)% (W+200) - 100; // slow drift
+    cloud(cx,100,40); cloud(cx+200,140,34); cloud(cx-220,70,36);
+
+    // basket shadow
+    ctx.globalAlpha = 0.2;
+    ctx.beginPath(); ctx.ellipse(BASKET.x, H-20, BASKET.w*0.55, 10 + (BASKET.bump?2:0), 0, 0, Math.PI*2); ctx.fillStyle = '#000'; ctx.fill(); ctx.globalAlpha = 1;
+  }
+
+  // Controls: keyboard
+  window.addEventListener('keydown', e => { if(e.key==='ArrowLeft') { keys.left=true; } if(e.key==='ArrowRight'){ keys.right=true; } });
+  window.addEventListener('keyup',   e => { if(e.key==='ArrowLeft') { keys.left=false;} if(e.key==='ArrowRight'){ keys.right=false;} });
+
+  // Controls: mouse & touch
+  function toCanvasX(clientX){
+    const rect = c.getBoundingClientRect();
+    const px = (clientX - rect.left) / rect.width; return px * W;
+  }
+  c.addEventListener('mousemove', e => { BASKET.x = Math.max(BASKET.w/2, Math.min(W - BASKET.w/2, toCanvasX(e.clientX))); });
+  c.addEventListener('touchmove', e => { if(e.touches && e.touches[0]){ BASKET.x = Math.max(BASKET.w/2, Math.min(W - BASKET.w/2, toCanvasX(e.touches[0].clientX))); } }, {passive:true});
+
+  // Buttons
+  btnPlay.addEventListener('click', start);
+  btnHow.addEventListener('click', () => {
+    alert('Catch fruits with your basket!\n\nControls:\n• Arrow keys ◀ ▶\n• Move mouse or swipe\n\nYou have 3 chances. Good luck!');
+  });
+  btnRetry.addEventListener('click', start);
+
+  // Focus canvas for keyboard play
+  c.addEventListener('click', () => c.focus());
+})();
+</script>
+</body>
+</html>

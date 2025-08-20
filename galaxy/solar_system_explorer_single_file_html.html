@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Solar System Explorer</title>
+  <style>
+    :root{
+      --bg:#0b0f17;        /* deep space */
+      --panel:#121827;     /* UI panels */
+      --accent:#66e0ff;    /* neon cyan */
+      --muted:#8aa0b6;     /* muted text */
+      --sun:#ffcc33;
+    }
+    html,body{height:100%;}
+    body{
+      margin:0; background:radial-gradient(1200px 600px at 50% -200px, #1a2235 0%, var(--bg) 60%); color:#e6eefc; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial; overflow:hidden;
+    }
+    #app{position:fixed; inset:0; display:grid; grid-template-rows: 1fr auto;}
+    canvas{display:block; width:100%; height:100%;}
+
+    /* UI overlay */
+    .hud{position:fixed; left:12px; top:12px; display:flex; flex-direction:column; gap:10px; z-index:5;}
+    .card{background:rgba(18,24,39,.9); backdrop-filter: blur(6px); border:1px solid rgba(102,224,255,.15); border-radius:16px; padding:12px 14px; box-shadow:0 10px 30px rgba(0,0,0,.35)}
+    .title{font-weight:700; letter-spacing:.4px; font-size:14px; color:#d9f3ff;}
+    .row{display:flex; align-items:center; gap:10px;}
+    .slider{appearance:none; width:200px; height:6px; border-radius:999px; background:linear-gradient(90deg, var(--accent), #8f7dff); outline:none}
+    .slider::-webkit-slider-thumb{appearance:none; width:16px; height:16px; border-radius:50%; background:#fff; border:2px solid var(--accent)}
+    .btns{display:flex; gap:8px; margin-top:6px}
+    .btn{cursor:pointer; background:var(--panel); border:1px solid rgba(102,224,255,.2); padding:8px 10px; border-radius:12px; color:#e6eefc; font-weight:600}
+    .btn:active{transform:translateY(1px)}
+
+    /* Planet info panel */
+    .info{position:fixed; right:12px; top:12px; width:min(340px, 86vw); max-height:70vh; overflow:auto}
+    .info h2{margin:4px 0 6px; font-size:18px}
+    .info small{color:var(--muted)}
+    .pill{display:inline-block; padding:2px 8px; border-radius:999px; background:rgba(102,224,255,.12); border:1px solid rgba(102,224,255,.25); color:#bfefff; font-size:12px}
+
+    /* Tooltip */
+    .tooltip{position:fixed; pointer-events:none; transform:translate(-50%,-120%); padding:4px 8px; font-size:12px; background:rgba(0,0,0,.6); border:1px solid rgba(255,255,255,.15); border-radius:8px}
+
+    /* Footer */
+    footer{grid-row:2; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 14px; background:linear-gradient( to right, rgba(18,24,39,.8), rgba(18,24,39,.4)); border-top:1px solid rgba(102,224,255,.12)}
+    .legend{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+    .dot{width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:6px; border:1px solid rgba(255,255,255,.6)}
+    .kbd{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; background:#0d1220; border:1px solid rgba(255,255,255,.15); padding:2px 6px; border-radius:6px; font-size:11px}
+
+    /* Mobile tweaks */
+    @media (max-width:700px){
+      .slider{width:150px}
+      .hud{gap:8px}
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <canvas id="scene" aria-label="Solar System visualization" ></canvas>
+
+    <!-- HUD Controls -->
+    <div class="hud">
+      <div class="card">
+        <div class="title">Orbit Speed</div>
+        <div class="row">
+          <input id="speed" type="range" class="slider" min="0" max="3" step="0.01" value="1" />
+          <span id="speedLabel" class="pill">1×</span>
+        </div>
+        <div class="btns">
+          <button class="btn" id="pauseBtn">⏯︎ Pause</button>
+          <button class="btn" id="resetBtn">Reset View</button>
+        </div>
+        <div class="btns">
+          <button class="btn" id="zoomIn">＋ Zoom</button>
+          <button class="btn" id="zoomOut">－ Zoom</button>
+        </div>
+        <div style="margin-top:6px; color:var(--muted); font-size:12px">Drag to rotate • Scroll to zoom • Click a planet</div>
+      </div>
+    </div>
+
+    <!-- Planet Info Panel -->
+    <div id="info" class="card info" hidden>
+      <div class="title">Planet Details</div>
+      <div id="infoBody"></div>
+    </div>
+
+    <div id="tooltip" class="tooltip" hidden></div>
+
+    <footer>
+      <div style="opacity:.9">Solar System Explorer</div>
+      <div class="legend" id="legend"></div>
+      <div style="color:var(--muted); font-size:12px">AU & periods scaled for visualization</div>
+    </footer>
+  </div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('scene');
+  const ctx = canvas.getContext('2d');
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+
+  // Data (simplified & scaled)
+  const TAU = Math.PI*2;
+  const KM = 1; // not used but semantic
+
+  const planets = [
+    { name:'Mercury', color:'#c7b39b', r:3.5, au:0.39, periodDays:88, desc:'Smallest and fastest planet.' },
+    { name:'Venus',   color:'#e3c97e', r:5,   au:0.72, periodDays:225, desc:'Thick atmosphere; Earth’s twin in size.' },
+    { name:'Earth',   color:'#6ab7ff', r:5.2, au:1.00, periodDays:365, desc:'Our home; only known world with life.' },
+    { name:'Mars',    color:'#ff6b57', r:4.2, au:1.52, periodDays:687, desc:'The red planet; giant volcanoes and canyons.' },
+    { name:'Jupiter', color:'#e0b68b', r:9,   au:5.20, periodDays:4333, desc:'Gas giant; the largest planet.' },
+    { name:'Saturn',  color:'#f1d59c', r:8,   au:9.58, periodDays:10759, desc:'Famous rings; gas giant.' },
+    { name:'Uranus',  color:'#a0e7ff', r:7,   au:19.20, periodDays:30687, desc:'Ice giant; rotates on its side.' },
+    { name:'Neptune', color:'#6fb1ff', r:7,   au:30.05, periodDays:60190, desc:'Farthest ice giant; supersonic winds.' },
+  ];
+
+  // Precompute orbital angular velocity (radians per simulated day)
+  planets.forEach(p => p.omega = TAU / p.periodDays);
+
+  // View state
+  let width=0, height=0, cx=0, cy=0;
+  let scale = 180;           // pixels per AU (dynamic)
+  let viewRotation = 0;      // radians
+  let running = true;        // animation on/off
+  let simSpeed = 1;          // 1 = real-time multiplier (scaled)
+
+  // Interaction state
+  let dragging = false;
+  let lastX = 0; let lastY = 0; // for potential future pan
+  let justDragged = false;  // differentiate click from drag
+
+  // Tooltip
+  const tooltip = document.getElementById('tooltip');
+
+  // Info panel
+  const infoEl = document.getElementById('info');
+  const infoBody = document.getElementById('infoBody');
+
+  // Controls
+  const speedInput = document.getElementById('speed');
+  const speedLabel = document.getElementById('speedLabel');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const zoomInBtn = document.getElementById('zoomIn');
+  const zoomOutBtn = document.getElementById('zoomOut');
+
+  function fit(){
+    const {clientWidth, clientHeight} = canvas;
+    width = clientWidth * dpr; height = clientHeight * dpr; canvas.width = width; canvas.height = height; ctx.setTransform(dpr,0,0,dpr,0,0); // draw in CSS pixels
+    cx = clientWidth/2; cy = clientHeight/2;
+    // dynamic scale based on viewport
+    const minDim = Math.min(clientWidth, clientHeight);
+    scale = Math.max(90, Math.min(240, minDim/6));
+  }
+  window.addEventListener('resize', fit, {passive:true});
+  fit();
+
+  // Legend
+  const legend = document.getElementById('legend');
+  planets.forEach(p=>{
+    const item = document.createElement('div'); item.style.display='flex'; item.style.alignItems='center';
+    const dot = document.createElement('span'); dot.className='dot'; dot.style.background=p.color; item.appendChild(dot);
+    const name = document.createElement('span'); name.textContent = p.name; name.style.fontSize='12px'; name.style.opacity='.9'; item.appendChild(name);
+    legend.appendChild(item);
+  });
+
+  // Simple ring for Saturn
+  function drawSaturnRing(x,y,zoom){
+    ctx.save();
+    ctx.translate(x,y);
+    ctx.rotate(0.5);
+    ctx.strokeStyle = 'rgba(255,240,180,.7)';
+    ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(0,0, 14*zoom, 6*zoom, 0, 0, TAU); ctx.stroke();
+    ctx.restore();
+  }
+
+  // World to screen transform with rotation + scale
+  function worldToScreen(wx, wy){
+    // rotate around Z
+    const cos = Math.cos(viewRotation), sin = Math.sin(viewRotation);
+    const rx = wx*cos - wy*sin; const ry = wx*sin + wy*cos;
+    return [cx + rx*scale, cy + ry*scale];
+  }
+
+  // Screen to world (inverse)
+  function screenToWorld(sx, sy){
+    const x = (sx - cx)/scale; const y = (sy - cy)/scale;
+    const cos = Math.cos(-viewRotation), sin = Math.sin(-viewRotation);
+    return [x*cos - y*sin, x*sin + y*cos];
+  }
+
+  // Sim clock
+  let lastT = performance.now();
+  let simDay = 0; // simulated days elapsed
+
+  function render(){
+    const now = performance.now();
+    const dt = (now - lastT)/1000; // seconds
+    lastT = now;
+    if(running){ simDay += dt * 60 * simSpeed; } // 60 simulated days per real-time second @ 1×
+
+    // Clear
+    ctx.clearRect(0,0,canvas.clientWidth,canvas.clientHeight);
+
+    // Draw faint star field
+    drawStars();
+
+    // Orbits
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(viewRotation);
+    planets.forEach((p, i)=>{
+      ctx.beginPath();
+      ctx.strokeStyle = `rgba(102,224,255,${i<4?0.18:0.1})`;
+      ctx.lineWidth = i<4 ? 1 : 0.8;
+      ctx.arc(0,0, p.au*scale, 0, TAU);
+      ctx.stroke();
+    });
+    ctx.restore();
+
+    // Sun
+    const sunR = 12;
+    ctx.shadowColor = '#ffdf7e'; ctx.shadowBlur = 20;
+    ctx.fillStyle = 'radial-gradient(circle, #fff 0%, #ffd76a 60%, #e68a00 100%)';
+    // Canvas can’t fill with CSS gradients directly; fake the glow:
+    ctx.beginPath(); ctx.arc(cx, cy, sunR+1, 0, TAU); ctx.fillStyle = '#ffcf4d'; ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Planets
+    let mouseHoverName = null; let hoverPos = null;
+    planets.forEach((p)=>{
+      const angle = p.omega * simDay; // radians
+      const wx = Math.cos(angle) * p.au;
+      const wy = Math.sin(angle) * p.au;
+      const [sx, sy] = worldToScreen(wx, wy);
+
+      // Hover detection (in screen space)
+      if(mousePos){
+        const dx = mousePos.x - sx; const dy = mousePos.y - sy; const dist = Math.hypot(dx,dy);
+        const pr = Math.max(2.5, p.r * (scale/180));
+        if(dist < pr + 6){ mouseHoverName = p.name; hoverPos = {x:sx, y:sy}; }
+      }
+
+      // Draw planet
+      ctx.beginPath();
+      ctx.fillStyle = p.color;
+      const radius = Math.max(2.2, p.r * (0.9 + (scale/260)) * 0.7);
+      ctx.arc(sx, sy, radius, 0, TAU);
+      ctx.fill();
+
+      if(p.name==='Saturn'){ drawSaturnRing(sx, sy, Math.max(1, scale/180) ); }
+
+      // Save screen position for hit testing on click
+      p._screen = {x:sx, y:sy, r: radius};
+    });
+
+    // Tooltip
+    if(mouseHoverName && hoverPos){
+      tooltip.hidden = false; tooltip.textContent = mouseHoverName;
+      tooltip.style.left = hoverPos.x + 'px';
+      tooltip.style.top  = hoverPos.y + 'px';
+    } else { tooltip.hidden = true; }
+
+    requestAnimationFrame(render);
+  }
+
+  // Star field (cheap)
+  const stars = Array.from({length:180}, ()=>({
+    x: Math.random(), y: Math.random(), s: Math.random()*1.4 + .2, a: Math.random()*.6 + .2
+  }));
+  function drawStars(){
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    ctx.save();
+    ctx.fillStyle = '#000';
+    stars.forEach(st =>{
+      const x = st.x*w, y = st.y*h;
+      ctx.globalAlpha = st.a * (0.8 + 0.2*Math.sin(performance.now()/1000 + st.x*10));
+      ctx.beginPath(); ctx.arc(x, y, st.s, 0, TAU); ctx.fillStyle='#9fc3ff'; ctx.fill();
+    });
+    ctx.restore(); ctx.globalAlpha = 1;
+  }
+
+  // Input handlers
+  let mousePos = null;
+  canvas.addEventListener('mousemove', (e)=>{
+    const rect = canvas.getBoundingClientRect();
+    mousePos = {x: e.clientX - rect.left, y: e.clientY - rect.top};
+    if(dragging){
+      const dx = e.clientX - lastX; // pixels
+      viewRotation += dx * 0.005;
+      lastX = e.clientX; lastY = e.clientY; justDragged = true;
+    }
+  });
+  canvas.addEventListener('mouseleave', ()=>{ mousePos = null; });
+
+  canvas.addEventListener('mousedown', (e)=>{
+    dragging = true; lastX = e.clientX; lastY = e.clientY; justDragged = false;
+  });
+  window.addEventListener('mouseup', ()=>{ dragging = false; });
+
+  // Click to open info (ignore if it was a drag)
+  canvas.addEventListener('click', (e)=>{
+    if(justDragged){ justDragged=false; return; }
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    let hit = null; let best = 1e9;
+    planets.forEach(p=>{
+      const dx = x - p._screen.x; const dy = y - p._screen.y; const d = Math.hypot(dx,dy);
+      if(d < p._screen.r + 8 && d < best){ hit = p; best = d; }
+    });
+    if(hit){ showInfo(hit); }
+  });
+
+  // Wheel zoom
+  canvas.addEventListener('wheel', (e)=>{
+    e.preventDefault();
+    const dir = Math.sign(e.deltaY);
+    const factor = Math.pow(1.1, dir);
+    scale = clamp(scale / factor, 60, 400);
+  }, {passive:false});
+
+  // Touch support (drag + pinch zoom)
+  let pinchStartDist = null; let startScale = scale; let startRot = viewRotation;
+  canvas.addEventListener('touchstart', (e)=>{
+    if(e.touches.length===1){ dragging = true; lastX = e.touches[0].clientX; justDragged=false; }
+    if(e.touches.length===2){ e.preventDefault();
+      pinchStartDist = dist2(e.touches[0], e.touches[1]); startScale = scale; startRot = viewRotation;
+    }
+  }, {passive:false});
+  canvas.addEventListener('touchmove', (e)=>{
+    if(e.touches.length===1 && dragging){
+      const dx = e.touches[0].clientX - lastX; viewRotation += dx*0.005; lastX = e.touches[0].clientX; justDragged=true;
+    }
+    if(e.touches.length===2){ e.preventDefault();
+      const d = dist2(e.touches[0], e.touches[1]);
+      if(pinchStartDist){ scale = clamp(startScale * (d/pinchStartDist), 60, 400); }
+    }
+  }, {passive:false});
+  window.addEventListener('touchend', ()=>{ dragging=false; pinchStartDist=null; }, {passive:true});
+
+  function dist2(a,b){ const dx=a.clientX-b.clientX, dy=a.clientY-b.clientY; return Math.hypot(dx,dy); }
+
+  // Buttons & sliders
+  speedInput.addEventListener('input', ()=>{
+    simSpeed = parseFloat(speedInput.value);
+    speedLabel.textContent = simSpeed.toFixed(2).replace(/\.00$/, '') + '×';
+  });
+  pauseBtn.addEventListener('click', ()=>{ running = !running; pauseBtn.textContent = running ? '⏯︎ Pause' : '▶︎ Resume'; });
+  resetBtn.addEventListener('click', ()=>{ viewRotation = 0; scale = Math.max(90, Math.min(240, Math.min(canvas.clientWidth, canvas.clientHeight)/6)); });
+  zoomInBtn.addEventListener('click', ()=>{ scale = clamp(scale*1.15, 60, 400); });
+  zoomOutBtn.addEventListener('click', ()=>{ scale = clamp(scale/1.15, 60, 400); });
+
+  function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+
+  function showInfo(p){
+    infoEl.hidden = false;
+    const periodYears = (p.periodDays/365.25).toFixed(2);
+    infoBody.innerHTML = `
+      <h2>${p.name}</h2>
+      <div style="margin:6px 0 10px"><span class="pill">Orbit ~ ${periodYears} Earth years</span></div>
+      <div style="font-size:14px; line-height:1.4; color:#dfe9ff">${p.desc}</div>
+      <div style="margin-top:10px; font-size:13px; color:var(--muted)">
+        <div>Distance from Sun: <strong>${p.au} AU</strong></div>
+        <div>Orbital period: <strong>${p.periodDays} days</strong></div>
+      </div>
+    `;
+  }
+
+  // Kick off
+  render();
+})();
+</script>
+</body>
+</html>
